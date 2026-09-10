@@ -34,6 +34,12 @@ There is no test runner configured in this package.
 
 The app never calls the backend origin directly from the browser. `next.config.ts` rewrites `/backend/:path*` → `${BACKEND_URL}/:path*`. The backend mounts its API under `/api/v1` (see `backend/api-spec.yml`), so all frontend requests go through `/backend/api/v1/...`. This keeps `BACKEND_URL` server-only and avoids CORS.
 
+`BACKEND_URL` has a fallback (`http://localhost:4000`) — без него незаданная переменная давала бы destination `undefined/api/v1/...`, и rewrite ломался бы молча.
+
+**Определение IP клиента.** `src/proxy.ts` срезает `X-Forwarded-For`, `X-Real-IP`, `X-Client-IP` и `Forwarded` на пути `/backend/*`. Причина проверена экспериментально: rewrite прокидывает заголовки браузера в destination как есть (запрос с `X-Forwarded-For: 203.0.113.9` доходит до бэкенда с этим значением), а адрес Next входит в `TRUSTED_PROXIES` бэкенда — то есть клиент мог бы подменить себе IP и обойти rate limit. Свой `X-Forwarded-For` Next не добавляет, реального адреса клиента он не знает, поэтому достоверного IP через эту схему не получить в принципе — бэкенду не следует ключевать лимиты по IP, пока перед Next не появится настоящий обратный прокси. Если такой прокси появится, логику в `proxy.ts` нужно пересмотреть.
+
+⚠️ В Next 16 `middleware.ts` переименован в **`proxy.ts`** (экспорт функции `proxy`) — старое имя устарело.
+
 ### API layer (`src/services/`, `src/types/`)
 
 The backend's OpenAPI spec lives at `backend/api-spec.yml` (read-only reference — it is the source of truth for request/response shapes). The frontend mirrors it:
