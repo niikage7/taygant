@@ -309,6 +309,9 @@ func (s *Tasks) Create(ctx context.Context, projectID, actorID uuid.UUID, in Tas
 	if in.EndDate.Before(*in.StartDate) {
 		return models.Task{}, Invalid("дата окончания не может быть раньше даты начала")
 	}
+	if in.WeightPercent != nil && (*in.WeightPercent < 0 || *in.WeightPercent > 100) {
+		return models.Task{}, Invalid("вес задачи должен быть от 0 до 100")
+	}
 	status := models.TaskStatusPlanned
 	if in.Status != nil {
 		if !userSettableStatus(*in.Status) {
@@ -561,6 +564,9 @@ func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskIn
 			task.ProgressPercent = *in.ProgressPercent
 		}
 		if in.WeightPercent != nil {
+			if *in.WeightPercent < 0 || *in.WeightPercent > 100 {
+				return Invalid("вес задачи должен быть от 0 до 100")
+			}
 			task.WeightPercent = *in.WeightPercent
 		}
 		if in.Status != nil {
