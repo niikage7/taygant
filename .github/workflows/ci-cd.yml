@@ -248,17 +248,15 @@ jobs:
       - name: 📥 Код
         uses: actions/checkout@v7
 
-      - name: 🧰 pnpm из frontend/package.json
-        uses: pnpm/action-setup@v6
-        with:
-          package_json_file: frontend/package.json
-
       - name: 🧰 Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # pnpm/action-setup запрещён политикой репозитория — ставим pnpm через corepack
+      # (входит в Node 22); версию он берёт из "packageManager" в frontend/package.json.
+      - name: 🧰 pnpm из frontend/package.json
+        run: corepack enable
 
       - name: 📦 Зависимости
         id: deps
