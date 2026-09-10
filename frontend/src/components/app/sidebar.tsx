@@ -62,14 +62,7 @@ export function Sidebar({
         className="flex items-center gap-2.5 px-4 py-3.5 focus-visible:focus-ring"
       >
         <LogoMark className="size-8" />
-        <span className="min-w-0">
-          <span className="block text-sm leading-tight font-bold text-ink">
-            taygant
-          </span>
-          <span className="block text-[10px] font-semibold tracking-wider text-brand uppercase">
-            ТПУ Enterprise
-          </span>
-        </span>
+        <span className="min-w-0 truncate text-sm font-bold text-ink">taygant</span>
       </Link>
 
       <nav className="flex-1 px-2 pt-3" aria-label="Разделы проекта">

@@ -224,6 +224,7 @@ export function NewProjectForm({
               className="mt-1.5 bg-surface"
               invalid={!validRange}
               weekdayHint={validRange ? formatWeekday(deadline) : undefined}
+              minDate={startDate}
             />
           </div>
 

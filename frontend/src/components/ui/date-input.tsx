@@ -1,10 +1,13 @@
 "use client";
 
+import * as Popover from "@radix-ui/react-popover";
 import { format, isValid, parse } from "date-fns";
 import { CalendarDays } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 const MASK = "дд.мм.гггг";
 const PATTERN = "dd.MM.yyyy";
@@ -34,12 +37,13 @@ function applyMask(raw: string): string {
 }
 
 /**
- * Поле даты в русском формате.
+ * Поле даты: ввод с клавиатуры плюс календарь по кнопке.
  *
  * Нативный `<input type="date">` не подходит: браузер рисует его в своей
  * локали, и у пользователя с английской системой дата выглядела бы как
- * 11/15/2025 независимо от `lang` документа. Поэтому обычный текстовый ввод с
- * маской — формат тогда одинаковый у всех.
+ * 11/15/2025 независимо от `lang` документа. Поэтому текстовый ввод с маской
+ * (быстрее, когда дата известна) и всплывающий календарь (удобнее, когда её
+ * надо выбрать глазами) — вместе, а не вместо друг друга.
  */
 export function DateInput({
   id,
@@ -48,6 +52,8 @@ export function DateInput({
   className,
   weekdayHint,
   invalid,
+  /** Ограничение снизу: например, дедлайн не раньше даты старта. */
+  minDate,
 }: {
   id: string;
   /** Значение в ISO — наружу компонент всегда отдаёт этот формат. */
@@ -57,10 +63,12 @@ export function DateInput({
   /** Короткий день недели справа (Сб, Вс) — подсказка из макета. */
   weekdayHint?: string;
   invalid?: boolean;
+  minDate?: string;
 }) {
   const [text, setText] = useState(() => toDisplay(value));
+  const [open, setOpen] = useState(false);
 
-  // Значение может измениться снаружи (сброс формы, автозаполнение) — тогда
+  // Значение может измениться снаружи (сброс формы, выбор в календаре) — тогда
   // синхронизируем видимый текст, но не мешаем набору внутри поля.
   useEffect(() => {
     const next = toDisplay(value);
@@ -68,31 +76,64 @@ export function DateInput({
   }, [value]);
 
   const incomplete = text.length > 0 && toIso(text) === null;
+  const selected = value ? parse(value, "yyyy-MM-dd", new Date()) : undefined;
+  const min = minDate ? parse(minDate, "yyyy-MM-dd", new Date()) : undefined;
 
   return (
-    <Input
-      id={id}
-      type="text"
-      inputMode="numeric"
-      autoComplete="off"
-      placeholder={MASK}
-      value={text}
-      aria-describedby={incomplete ? `${id}-format` : undefined}
-      invalid={invalid || incomplete}
-      icon={<CalendarDays />}
-      className={className}
-      trailing={
-        weekdayHint ? (
-          <span className="font-mono text-xs text-ink-faint">{weekdayHint}</span>
-        ) : undefined
-      }
-      onChange={(event) => {
-        const masked = applyMask(event.target.value);
-        setText(masked);
-        const iso = toIso(masked);
-        if (iso) onChange(iso);
-      }}
-    />
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder={MASK}
+        value={text}
+        invalid={invalid || incomplete}
+        className={className}
+        icon={
+          <Popover.Trigger
+            type="button"
+            aria-label="Выбрать дату в календаре"
+            className="flex items-center rounded-control text-ink-faint transition-colors hover:text-brand focus-visible:focus-ring data-[state=open]:text-brand"
+          >
+            <CalendarDays className="size-4" />
+          </Popover.Trigger>
+        }
+        trailing={
+          weekdayHint ? (
+            <span className="font-mono text-xs text-ink-faint">{weekdayHint}</span>
+          ) : undefined
+        }
+        onChange={(event) => {
+          const masked = applyMask(event.target.value);
+          setText(masked);
+          const iso = toIso(masked);
+          if (iso) onChange(iso);
+        }}
+      />
+
+      <Popover.Portal>
+        <Popover.Content
+          align="start"
+          sideOffset={6}
+          className={cn(
+            "z-50 rounded-card border border-line bg-surface shadow-popover",
+            "outline-none",
+          )}
+        >
+          <Calendar
+            selected={selected && isValid(selected) ? selected : undefined}
+            defaultMonth={selected && isValid(selected) ? selected : undefined}
+            disabled={min ? (date) => date < min : undefined}
+            onSelect={(date) => {
+              if (!date) return;
+              onChange(format(date, "yyyy-MM-dd"));
+              setOpen(false);
+            }}
+          />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
