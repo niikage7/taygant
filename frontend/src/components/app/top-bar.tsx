@@ -30,7 +30,7 @@ export function TopBar() {
         <CreateTaskDialog
           projectId={projectId}
           trigger={
-            <Button size="sm" className="shrink-0">
+            <Button size="sm" className="shrink-0" data-tour="create-task">
               <Plus />
               Задача
             </Button>

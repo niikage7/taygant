@@ -7,6 +7,7 @@ import {
   CircleAlert,
   CirclePlus,
   Download,
+  GraduationCap,
   GitBranch,
   LineChart,
   Users,
@@ -54,12 +55,14 @@ export function Sidebar({
   currentProjectId,
   onSelectProject,
   detailsHref = null,
+  onStartTour,
 }: {
   projects: ProjectSummary[];
   currentProjectId: string | undefined;
   onSelectProject: (projectId: string) => void;
   /** Адрес первой задачи проекта для пункта «Детали и Зависимости». */
   detailsHref?: string | null;
+  onStartTour: () => void;
 }) {
   const pathname = usePathname();
   const items = navItems(detailsHref);
@@ -96,7 +99,7 @@ export function Sidebar({
         <span className="min-w-0 truncate text-sm font-bold text-ink">taygant</span>
       </Link>
 
-      <nav className="flex-1 px-2 pt-3" aria-label="Разделы проекта">
+      <nav className="flex-1 px-2 pt-3" aria-label="Разделы проекта" data-tour="nav">
         <p className="px-2 pb-2 text-[11px] font-semibold tracking-wider text-ink-faint uppercase">
           Рабочее пространство
         </p>
@@ -143,11 +146,22 @@ export function Sidebar({
       </nav>
 
       <div className="border-t border-line p-4">
-        <ProjectSwitcher
-          projects={projects}
-          currentProjectId={currentProjectId}
-          onSelect={onSelectProject}
-        />
+        <div data-tour="project-switcher">
+          <ProjectSwitcher
+            projects={projects}
+            currentProjectId={currentProjectId}
+            onSelect={onSelectProject}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={onStartTour}
+          className="mt-4 flex items-center gap-2 rounded-control text-[13px] text-ink-muted transition-colors hover:text-brand focus-visible:focus-ring"
+        >
+          <GraduationCap className="size-4" />
+          Как это работает
+        </button>
 
         <div className="mt-4 flex items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-ink-faint uppercase">

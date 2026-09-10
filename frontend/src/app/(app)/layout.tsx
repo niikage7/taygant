@@ -5,9 +5,11 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { PageLoading } from "@/components/app/page-state";
 import { Sidebar } from "@/components/app/sidebar";
+import { ProductTour } from "@/components/tour/product-tour";
 import { TopBar } from "@/components/app/top-bar";
 import { CurrentProjectProvider, useCurrentProject } from "@/data/current-project";
 import { useTasks } from "@/data/queries";
+import { isTourCompleted } from "@/lib/tour";
 import { getAccessToken } from "@/services/http-client";
 
 /**
@@ -29,6 +31,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
 
   useEffect(() => {
     if (getAccessToken()) {
@@ -38,6 +41,12 @@ function AppShell({ children }: { children: ReactNode }) {
     setAuthorized(false);
     router.replace("/login");
   }, [router]);
+
+  // Тур запускаем только после проверки сессии: до неё экраны ещё не
+  // отрисованы, и подсвечивать было бы нечего.
+  useEffect(() => {
+    if (authorized && !isTourCompleted()) setTourOpen(true);
+  }, [authorized]);
 
   const { projects, projectId, selectProject } = useCurrentProject();
   // Тот же ключ, что и на экране Ганта, — React Query переиспользует ответ,
@@ -62,11 +71,14 @@ function AppShell({ children }: { children: ReactNode }) {
         currentProjectId={projectId}
         onSelectProject={selectProject}
         detailsHref={firstTaskId ? `/tasks/${firstTaskId}` : null}
+        onStartTour={() => setTourOpen(true)}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
         <main className="min-w-0 flex-1 bg-page p-6">{children}</main>
       </div>
+
+      {tourOpen ? <ProductTour onClose={() => setTourOpen(false)} /> : null}
     </div>
   );
 }

@@ -149,7 +149,7 @@ export function GanttBoard({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-card bg-surface shadow-card">
+      <div className="overflow-hidden rounded-card bg-surface shadow-card" data-tour="gantt">
         <div className="flex max-h-[540px] overflow-y-auto">
           <TaskTable
             rows={rows}

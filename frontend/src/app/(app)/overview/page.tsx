@@ -57,7 +57,9 @@ export default function OverviewPage() {
         </h1>
       </div>
 
-      <KpiCards data={data} project={project.data} />
+      <div data-tour="kpi">
+        <KpiCards data={data} project={project.data} />
+      </div>
 
       <MilestonesStrip
         milestones={data.nearestMilestones}
@@ -66,7 +68,7 @@ export default function OverviewPage() {
             <MilestonesDialog
               projectId={projectId}
               trigger={
-                <Button variant="secondary" size="sm">
+                <Button variant="secondary" size="sm" data-tour="milestones">
                   <Flag />
                   Контрольные точки
                 </Button>
