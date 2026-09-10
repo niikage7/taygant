@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, History, Maximize2, MessageSquare, Waypoints, X } from "lucide-react";
+import { Check, ChevronRight, History, MessageSquare, Waypoints, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { use } from "react";
@@ -69,13 +69,6 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
                 Синхронизировано ({detail.externalLink.provider} #{detail.externalLink.referenceId})
               </Badge>
             ) : null}
-            <button
-              type="button"
-              aria-label="Развернуть на весь экран"
-              className="rounded-control p-1 text-ink-faint hover:text-ink focus-visible:focus-ring"
-            >
-              <Maximize2 className="size-4" />
-            </button>
             <Link
               href="/gantt"
               aria-label="Закрыть редактор"
