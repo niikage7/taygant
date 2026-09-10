@@ -205,9 +205,19 @@ func statusMap(tasks []models.Task) map[uuid.UUID]models.TaskStatus {
 // applyDerivedFields считает длительности, которые не хранятся в таблице.
 // IsCriticalPath/BufferDays считает отдельно applySchedule — они требуют
 // не только проекта, но и всего графа связей, которого здесь нет.
+//
+// Обе длительности считаются включительно (однодневная задача — 1 день), как
+// уже делает workingDaysBetween и как frontend/src/lib/gantt.ts:spanPx строит
+// отрезок на Ганте (differenceInCalendarDays + 1). Веха — точка на шкале,
+// а не отрезок, поэтому её длительность всегда 0 независимо от дат.
 func applyDerivedFields(tasks []models.Task, project models.Project) {
 	for i := range tasks {
-		tasks[i].DurationCalendarDays = tasks[i].StartDate.DaysUntil(tasks[i].EndDate)
+		if tasks[i].IsMilestone {
+			tasks[i].DurationCalendarDays = 0
+			tasks[i].DurationWorkingDays = 0
+			continue
+		}
+		tasks[i].DurationCalendarDays = tasks[i].StartDate.DaysUntil(tasks[i].EndDate) + 1
 		tasks[i].DurationWorkingDays = workingDaysBetween(tasks[i].StartDate, tasks[i].EndDate, project.WorkingCalendarType)
 	}
 }
