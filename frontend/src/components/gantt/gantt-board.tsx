@@ -6,11 +6,10 @@ import { useState } from "react";
 import { CreateTaskDialog } from "@/components/gantt/create-task-dialog";
 import { TaskTable } from "@/components/gantt/task-table";
 import { Timeline } from "@/components/gantt/timeline";
-import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/utils";
 import type { TimeScale } from "@/lib/gantt";
-import type { Project, Task, TaskDependency } from "@/types";
+import type { Milestone, Project, Task, TaskDependency } from "@/types";
 
 const SCALES = [
   { value: "days", label: "Дни" },
@@ -29,12 +28,14 @@ export function GanttBoard({
   project,
   tasks,
   dependencies,
+  milestones,
   currentUserId,
   today,
 }: {
   project: Project;
   tasks: Task[];
   dependencies: TaskDependency[];
+  milestones: Milestone[];
   currentUserId?: string;
   today: string;
 }) {
@@ -90,19 +91,6 @@ export function GanttBoard({
             tone="warning"
           />
         </span>
-
-        <span className="ml-auto flex items-center gap-2">
-          <CreateTaskDialog
-            projectId={project.id}
-            projectTasks={tasks}
-            trigger={
-              <Button>
-                <Plus />
-                Задача
-              </Button>
-            }
-          />
-        </span>
       </div>
 
       {alertVisible && criticalTask ? (
@@ -141,6 +129,7 @@ export function GanttBoard({
           <Timeline
             tasks={visibleTasks}
             dependencies={dependencies}
+            milestones={milestones}
             scale={scale}
             startDate={project.startDate}
             endDate={project.deadline}
@@ -173,7 +162,11 @@ export function GanttBoard({
           <span className="h-px w-4 border-t border-dashed border-danger" /> Критическая
         </span>
         <span className="flex items-center gap-1.5 text-brand">
-          <span className="size-2.5 rotate-45 rounded-[1px] bg-brand" /> Контрольная точка
+          <span className="size-2.5 rotate-45 rounded-[1px] bg-brand" /> Задача-веха
+        </span>
+        <span className="flex items-center gap-1.5 text-accent">
+          <span className="size-2.5 rotate-45 rounded-[1px] bg-accent" /> Контрольная точка
+          проекта
         </span>
       </div>
     </div>

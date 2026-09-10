@@ -13,11 +13,17 @@ import {
   type TimeScale,
 } from "@/lib/gantt";
 import { cn } from "@/lib/utils";
-import type { Task, TaskDependency } from "@/types";
+import type { Milestone, Task, TaskDependency } from "@/types";
 
 export const ROW_HEIGHT = 52;
 const HEADER_HEIGHT = 48;
 const BAR_HEIGHT = 26;
+/** За сколько календарных дней до дедлайна задача считается рисковой. */
+const DEADLINE_RISK_DAYS = 3;
+/** Минимальная ширина колонки, при которой влезает полная подпись месяца. */
+const MONTH_FULL_LABEL_MIN_WIDTH = 104;
+/** Минимальная ширина колонки для короткой подписи месяца («авг 26»). */
+const MONTH_SHORT_LABEL_MIN_WIDTH = 64;
 
 /**
  * Правая часть диаграммы: шапка календаря, отрезки задач и SVG-стрелки связей.
@@ -29,6 +35,7 @@ const BAR_HEIGHT = 26;
 export function Timeline({
   tasks,
   dependencies,
+  milestones,
   scale,
   startDate,
   endDate,
@@ -37,6 +44,8 @@ export function Timeline({
 }: {
   tasks: Task[];
   dependencies: TaskDependency[];
+  /** Контрольные точки проекта — отдельная сущность от задач с isMilestone. */
+  milestones: Milestone[];
   scale: TimeScale;
   startDate: string;
   endDate: string;
@@ -72,10 +81,14 @@ export function Timeline({
             {months.map((month) => (
               <span
                 key={month.key}
-                className="absolute top-0 flex h-6 items-center px-2 text-[11px] font-bold tracking-wide text-brand uppercase"
+                className="absolute top-0 flex h-6 items-center overflow-hidden px-2 text-[11px] font-bold tracking-wide whitespace-nowrap text-brand uppercase"
                 style={{ left: month.left, width: month.width }}
               >
-                {month.label}
+                {month.width >= MONTH_FULL_LABEL_MIN_WIDTH
+                  ? month.label
+                  : month.width >= MONTH_SHORT_LABEL_MIN_WIDTH
+                    ? month.shortLabel
+                    : ""}
               </span>
             ))}
           </div>
@@ -134,9 +147,37 @@ export function Timeline({
               left={offsetPx(range, task.startDate)}
               width={spanPx(range, task.startDate, task.endDate)}
               pxPerDay={range.pxPerDay}
+              today={today}
               highlightCriticalPath={highlightCriticalPath}
             />
           ))}
+
+          {milestones.map((milestone) => {
+            const left = offsetPx(range, milestone.plannedDate) + range.pxPerDay / 2;
+            if (left < 0 || left > range.width) return null;
+            const done = milestone.status === "done";
+            return (
+              <span
+                key={milestone.id}
+                className="absolute top-0 flex flex-col items-center"
+                style={{ left, height: bodyHeight }}
+                title={`${milestone.code ? `${milestone.code} · ` : ""}${milestone.name} · ${format(parseISO(milestone.plannedDate), "dd.MM.yyyy")}`}
+              >
+                <span
+                  className={cn(
+                    "h-full w-px border-l border-dashed",
+                    done ? "border-success" : "border-accent",
+                  )}
+                />
+                <span
+                  className={cn(
+                    "absolute -top-1 size-2.5 rotate-45 rounded-[1px]",
+                    done ? "bg-success" : "bg-accent",
+                  )}
+                />
+              </span>
+            );
+          })}
 
           {differenceInCalendarDays(parseISO(today), range.start) >= 0 ? (
             <span
@@ -157,6 +198,7 @@ function TaskBar({
   left,
   width,
   pxPerDay,
+  today,
   highlightCriticalPath,
 }: {
   task: Task;
@@ -164,9 +206,13 @@ function TaskBar({
   left: number;
   width: number;
   pxPerDay: number;
+  today: string;
   highlightCriticalPath: boolean;
 }) {
   const critical = highlightCriticalPath && task.isCriticalPath;
+  // Мало времени до дедлайна (или уже просрочена) и задача не закрыта — тоже риск.
+  const daysLeft = differenceInCalendarDays(parseISO(task.endDate), parseISO(today));
+  const nearDeadline = task.status !== "done" && daysLeft <= DEADLINE_RISK_DAYS;
 
   if (task.isMilestone) {
     return (
@@ -187,7 +233,11 @@ function TaskBar({
     <span
       className={cn(
         "absolute flex items-center overflow-hidden rounded-control",
-        critical ? "bg-danger" : task.status === "done" ? "bg-success" : "bg-warning",
+        critical || nearDeadline
+          ? "bg-danger"
+          : task.status === "done"
+            ? "bg-success"
+            : "bg-warning",
       )}
       style={{ top, left, width, height: BAR_HEIGHT }}
       title={`${task.title} · ${task.progressPercent}%`}

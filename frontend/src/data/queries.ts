@@ -20,6 +20,7 @@ import type {
   GanttScale,
   HistoryEntry,
   ApplyShiftRequest,
+  MilestoneCreateRequest,
   Project,
   ProjectDashboard,
   ProjectMember,
@@ -216,6 +217,46 @@ export function useProjectMembers(projectId: string | undefined): UseQueryResult
     queryKey: queryKeys.members(projectId ?? ""),
     queryFn: () => membersService.list(projectId as string),
     enabled: Boolean(projectId),
+  });
+}
+
+/**
+ * Вехи меняют и список вех, и дашборд (`milestonesClosed`, `nearestMilestones`),
+ * и данные Ганта — поэтому инвалидируем всё поддерево проектов.
+ */
+function useMilestoneInvalidation() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: ["projects"] });
+}
+
+export function useCreateMilestone(projectId: string | undefined) {
+  const invalidate = useMilestoneInvalidation();
+  return useMutation({
+    mutationFn: (payload: MilestoneCreateRequest) =>
+      milestonesService.create(projectId as string, payload),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateMilestone() {
+  const invalidate = useMilestoneInvalidation();
+  return useMutation({
+    mutationFn: ({
+      milestoneId,
+      payload,
+    }: {
+      milestoneId: string;
+      payload: MilestoneCreateRequest;
+    }) => milestonesService.update(milestoneId, payload),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteMilestone() {
+  const invalidate = useMilestoneInvalidation();
+  return useMutation({
+    mutationFn: (milestoneId: string) => milestonesService.remove(milestoneId),
+    onSuccess: invalidate,
   });
 }
 

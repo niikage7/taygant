@@ -130,7 +130,6 @@ func seedDemoProject(db *gorm.DB, users []models.User) error {
 			StartDate:                 models.NewDate(2026, 8, 18),
 			Deadline:                  models.NewDate(2026, 9, 30),
 			WorkingCalendarType:       models.Calendar52,
-			IncludePublicHolidays:     true,
 			AutoRecalculateDependents: true,
 			HighlightCriticalPath:     true,
 			CreatedByID:               volkov.ID,

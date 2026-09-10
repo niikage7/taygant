@@ -50,7 +50,6 @@ type projectCreateRequest struct {
 	StartDate                 models.Date                  `json:"startDate"`
 	Deadline                  models.Date                  `json:"deadline"`
 	WorkingCalendarType       models.WorkingCalendarType   `json:"workingCalendarType"`
-	IncludePublicHolidays     *bool                        `json:"includePublicHolidays"`
 	AutoRecalculateDependents *bool                        `json:"autoRecalculateDependents"`
 	HighlightCriticalPath     *bool                        `json:"highlightCriticalPath"`
 	Members                   []projectMemberCreateRequest `json:"members"`
@@ -83,7 +82,6 @@ func (a *API) projectsCreate(c *fiber.Ctx) error {
 		StartDate:                 body.StartDate,
 		Deadline:                  body.Deadline,
 		WorkingCalendarType:       body.WorkingCalendarType,
-		IncludePublicHolidays:     body.IncludePublicHolidays,
 		AutoRecalculateDependents: body.AutoRecalculateDependents,
 		HighlightCriticalPath:     body.HighlightCriticalPath,
 		Members:                   members,

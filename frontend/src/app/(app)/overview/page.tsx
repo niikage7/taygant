@@ -1,14 +1,16 @@
 "use client";
 
-import { PlugZap } from "lucide-react";
+import { Flag, PlugZap } from "lucide-react";
 
 import { EmptyProjects, PageError, PageLoading } from "@/components/app/page-state";
 import { AttentionTasks } from "@/components/dashboard/attention-tasks";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
+import { MilestonesDialog } from "@/components/dashboard/milestones-dialog";
 import { MilestonesStrip } from "@/components/dashboard/milestones-strip";
 import { RiskCard } from "@/components/dashboard/risk-card";
 import { WorkloadCard } from "@/components/dashboard/workload-card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { useCurrentProject } from "@/data/current-project";
 import { useDashboard, useProject } from "@/data/queries";
@@ -56,9 +58,22 @@ export default function OverviewPage() {
 
       <KpiCards data={data} project={project.data} />
 
-      {data.nearestMilestones.length > 0 ? (
-        <MilestonesStrip milestones={data.nearestMilestones} />
-      ) : null}
+      <MilestonesStrip
+        milestones={data.nearestMilestones}
+        action={
+          projectId ? (
+            <MilestonesDialog
+              projectId={projectId}
+              trigger={
+                <Button variant="secondary" size="sm">
+                  <Flag />
+                  Контрольные точки
+                </Button>
+              }
+            />
+          ) : null
+        }
+      />
 
       <div className={hasWorkload ? "grid gap-4 lg:grid-cols-[1.4fr_1fr]" : "space-y-4"}>
         <div className="space-y-4">

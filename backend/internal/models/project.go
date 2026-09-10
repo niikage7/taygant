@@ -29,7 +29,6 @@ type Project struct {
 
 	// Настройки расчёта графика — влияют на пересчёт сроков и отрисовку Ганта.
 	WorkingCalendarType       WorkingCalendarType `gorm:"type:varchar(10);not null"`
-	IncludePublicHolidays     bool                `gorm:"not null;default:true"`
 	AutoRecalculateDependents bool                `gorm:"not null;default:true"`
 	HighlightCriticalPath     bool                `gorm:"not null;default:true"`
 

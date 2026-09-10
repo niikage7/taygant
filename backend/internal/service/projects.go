@@ -111,7 +111,6 @@ type CreateInput struct {
 	StartDate                 models.Date
 	Deadline                  models.Date
 	WorkingCalendarType       models.WorkingCalendarType
-	IncludePublicHolidays     *bool
 	AutoRecalculateDependents *bool
 	HighlightCriticalPath     *bool
 	Members                   []MemberInput
@@ -167,7 +166,6 @@ func (s *Projects) Create(ctx context.Context, userID uuid.UUID, in CreateInput)
 		StartDate:                 in.StartDate,
 		Deadline:                  in.Deadline,
 		WorkingCalendarType:       calendar,
-		IncludePublicHolidays:     boolOrDefault(in.IncludePublicHolidays, true),
 		AutoRecalculateDependents: boolOrDefault(in.AutoRecalculateDependents, true),
 		HighlightCriticalPath:     boolOrDefault(in.HighlightCriticalPath, true),
 		CreatedByID:               userID,

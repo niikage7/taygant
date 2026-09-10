@@ -262,10 +262,9 @@ func applySchedule(tasks []models.Task, deps []models.TaskDependency) error {
 }
 
 // workingDaysBetween считает рабочие дни календаря проекта между двумя датами
-// (включительно). Государственные праздники РФ не вычитаются: их календаря
-// в проекте нет, а зашивать фиксированный список в код означало бы, что он
-// устареет к следующему году. IncludePublicHolidays учитывается, когда
-// такой календарь появится.
+// (включительно). Государственные праздники РФ не вычитаются: календаря
+// праздников в проекте нет, а зашивать фиксированный список в код означало
+// бы, что он устареет к следующему году.
 func workingDaysBetween(start, end models.Date, calendar models.WorkingCalendarType) int {
 	if end.Before(start) {
 		return 0
