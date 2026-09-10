@@ -31,16 +31,19 @@ type API struct {
 	history      *service.History
 	simulation   *service.Simulation
 	dashboard    *service.Dashboard
+	workload     *service.Workload
+	export       *service.Export
 }
 
 // New собирает HTTP-слой поверх готового подключения к БД.
 func New(db *gorm.DB, cfg config.Config) *API {
 	tokens := auth.NewTokenIssuer(cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 
-	// tasks и milestones собираются отдельно: Dashboard переиспользует их
-	// логику (эффективные статусы, CPM, статус вехи), а не дублирует её.
+	// tasks и milestones собираются отдельно: Dashboard и Export переиспользуют
+	// их логику (эффективные статусы, CPM, статус вехи), а не дублируют её.
 	tasksSvc := service.NewTasks(db)
 	milestonesSvc := service.NewMilestones(db)
+	workloadSvc := service.NewWorkload(db)
 
 	return &API{
 		db:           db,
@@ -58,7 +61,9 @@ func New(db *gorm.DB, cfg config.Config) *API {
 		comments:     service.NewComments(db),
 		history:      service.NewHistory(db),
 		simulation:   service.NewSimulation(db),
-		dashboard:    service.NewDashboard(db, tasksSvc, milestonesSvc),
+		dashboard:    service.NewDashboard(db, tasksSvc, milestonesSvc, workloadSvc),
+		workload:     workloadSvc,
+		export:       service.NewExport(db, tasksSvc, milestonesSvc),
 	}
 }
 

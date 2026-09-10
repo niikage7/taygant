@@ -17,12 +17,14 @@ type Dashboard struct {
 	db         *gorm.DB
 	tasks      *Tasks
 	milestones *Milestones
+	workload   *Workload
 }
 
-// NewDashboard собирает сервис дашборда поверх уже готовых сервисов задач и
-// вех: их логика (эффективные статусы, CPM, статус вехи) не дублируется здесь.
-func NewDashboard(db *gorm.DB, tasks *Tasks, milestones *Milestones) *Dashboard {
-	return &Dashboard{db: db, tasks: tasks, milestones: milestones}
+// NewDashboard собирает сервис дашборда поверх уже готовых сервисов задач,
+// вех и загрузки команды: их логика (эффективные статусы, CPM, статус вехи,
+// часы/неделю по спринту) не дублируется здесь.
+func NewDashboard(db *gorm.DB, tasks *Tasks, milestones *Milestones, workload *Workload) *Dashboard {
+	return &Dashboard{db: db, tasks: tasks, milestones: milestones, workload: workload}
 }
 
 // ScheduleAdherence — соблюдение сроков проекта, посчитанное CPM-движком.
@@ -54,9 +56,8 @@ type AttentionTask struct {
 
 // Result — данные экрана «Обзор и Аналитика».
 //
-// TeamWorkload намеренно отсутствует: в схеме Task нет оценки трудозатрат
-// (часов на задачу), посчитать assignedHoursPerWeek не от чего — см.
-// GET /projects/{id}/workload, который по той же причине остаётся 501.
+// TeamWorkload считается тем же сервисом, что и GET /projects/{id}/workload,
+// за текущий спринт (см. Workload.List и её комментарий про эвристику часов).
 // ProgressDeltaPercent всегда 0: сравнение с предыдущим периодом требует
 // исторических снимков прогресса, которых в БД не хранится ни одного —
 // это отдельный, не CPM-related пробел (нужна таблица снапшотов и job,
@@ -73,6 +74,7 @@ type DashboardResult struct {
 	NearestMilestones    []models.Milestone
 	Risks                []Risk
 	AttentionTasks       []AttentionTask
+	TeamWorkload         []MemberWorkload
 }
 
 // bufferCriticalThresholdDays — ниже этого остатка резерва проект считается
@@ -105,6 +107,10 @@ func (s *Dashboard) Get(ctx context.Context, projectID uuid.UUID) (DashboardResu
 		return DashboardResult{}, err
 	}
 	summary, err := s.tasks.ComputeSchedule(ctx, projectID)
+	if err != nil {
+		return DashboardResult{}, err
+	}
+	workload, err := s.workload.List(ctx, projectID, nil)
 	if err != nil {
 		return DashboardResult{}, err
 	}
@@ -177,6 +183,7 @@ func (s *Dashboard) Get(ctx context.Context, projectID uuid.UUID) (DashboardResu
 		NearestMilestones:    nearest,
 		Risks:                risks,
 		AttentionTasks:       attention,
+		TeamWorkload:         workload,
 	}, nil
 }
 

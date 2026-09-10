@@ -37,9 +37,7 @@ type attentionTaskDTO struct {
 	DeviationDays int     `json:"deviationDays"`
 }
 
-// memberWorkloadDTO — схема MemberWorkload. Реального конструктора нет:
-// GET /projects/{id}/workload остаётся 501 (в Task нет оценки часов, считать
-// нечего), а здесь тип нужен только для пустого teamWorkload дашборда.
+// memberWorkloadDTO — схема MemberWorkload.
 type memberWorkloadDTO struct {
 	User                 userDTO    `json:"user"`
 	SprintID             *uuid.UUID `json:"sprintId"`
@@ -48,12 +46,21 @@ type memberWorkloadDTO struct {
 	UtilizationPercent   int        `json:"utilizationPercent"`
 }
 
+func newMemberWorkloadDTO(w service.MemberWorkload) memberWorkloadDTO {
+	var user userDTO
+	if w.Member.User != nil {
+		user = newUserDTO(*w.Member.User)
+	}
+	return memberWorkloadDTO{
+		User:                 user,
+		SprintID:             w.SprintID,
+		AssignedHoursPerWeek: w.AssignedHoursPerWeek,
+		WeeklyHoursLimit:     w.Member.WeeklyHoursLimit,
+		UtilizationPercent:   w.UtilizationPercent,
+	}
+}
+
 // projectDashboardDTO — схема ProjectDashboard.
-//
-// TeamWorkload сериализуется как пустой массив, а не опускается: в JSON-схеме
-// поле обязательно, и фронт ожидает массив, который можно проитерировать.
-// Пусто оно ровно по той же причине, что и GET /workload остаётся 501 —
-// в задаче нет оценки часов, вычислять нечего.
 type projectDashboardDTO struct {
 	Project                projectSummaryDTO      `json:"project"`
 	OverallProgressPercent float64                `json:"overallProgressPercent"`
@@ -94,6 +101,11 @@ func newProjectDashboardDTO(r service.DashboardResult) projectDashboardDTO {
 		milestones = append(milestones, newMilestoneDTO(m))
 	}
 
+	workload := make([]memberWorkloadDTO, 0, len(r.TeamWorkload))
+	for _, w := range r.TeamWorkload {
+		workload = append(workload, newMemberWorkloadDTO(w))
+	}
+
 	return projectDashboardDTO{
 		Project:                newProjectSummaryDTO(r.Project, r.Metrics),
 		OverallProgressPercent: r.Metrics.ProgressPercent,
@@ -116,6 +128,6 @@ func newProjectDashboardDTO(r service.DashboardResult) projectDashboardDTO {
 		NearestMilestones: milestones,
 		Risks:             risks,
 		AttentionTasks:    attention,
-		TeamWorkload:      []memberWorkloadDTO{},
+		TeamWorkload:      workload,
 	}
 }

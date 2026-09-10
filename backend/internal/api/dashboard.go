@@ -9,10 +9,10 @@ func (a *API) registerDashboardRoutes(r fiber.Router) {
 
 // GET /projects/{projectId}/dashboard — агрегированные метрики для экрана «Обзор и Аналитика».
 //
-// progressDeltaPercent всегда 0 (нет исторических снимков прогресса) и
-// teamWorkload всегда пуст (в Task нет оценки часов) — см. комментарии в
-// internal/service/dashboard.go. Остальные поля посчитаны по-настоящему,
-// включая scheduleAdherence через CPM (internal/schedule).
+// progressDeltaPercent всегда 0 (нет исторических снимков прогресса) — см.
+// комментарий в internal/service/dashboard.go. Остальные поля посчитаны
+// по-настоящему, включая scheduleAdherence через CPM (internal/schedule) и
+// teamWorkload за текущий спринт (internal/service/workload.go).
 // 200 -> ProjectDashboard.
 func (a *API) dashboardGet(c *fiber.Ctx) error {
 	projectID, err := pathUUID(c, "projectId")
