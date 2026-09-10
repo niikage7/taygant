@@ -27,8 +27,14 @@ export default function RegisterPage() {
 
       <p className="mt-6 border-t border-line pt-5 text-center text-xs leading-relaxed text-ink-faint">
         Нажимая на кнопку «Зарегистрироваться», вы принимаете{" "}
+        {/*
+          Открываем в новой вкладке: пользователь читает соглашение посреди
+          заполнения формы, и уход со страницы стёр бы уже введённые данные.
+        */}
         <Link
           href="/terms"
+          target="_blank"
+          rel="noopener noreferrer"
           className="rounded-control font-semibold text-brand hover:text-brand-hover focus-visible:focus-ring"
         >
           пользовательское соглашение

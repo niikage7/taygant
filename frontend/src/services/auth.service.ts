@@ -19,11 +19,10 @@ export const authService = {
   },
 
   /**
-   * Регистрирует нового пользователя и сразу выдаёт пару токенов.
+   * Регистрирует нового пользователя и сразу выдаёт пару токенов (ответ 201).
    *
-   * ⚠️ `/auth/register` ещё не описан в `backend/api-spec.yml` и не реализован в Go-хендлерах —
-   * до появления эндпоинта запрос вернёт 404/501. Форма регистрации из макета работает,
-   * ошибка показывается пользователю.
+   * Эндпоинта нет в `api-spec.yml` — он реализован сверх спецификации,
+   * см. `backend/internal/api/auth.go`. 400 — некорректные данные, 409 — email занят.
    */
   async register(payload: RegisterRequest): Promise<RegisterResponse> {
     const result = await httpClient.post<RegisterResponse>("/auth/register", payload, {

@@ -1,18 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin", "cyrillic"],
-  display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
-  subsets: ["latin", "cyrillic"],
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: {
@@ -24,8 +11,34 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ru" className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="ru" className="antialiased">
+      <head>
+        {/*
+          Шрифты объявлены в globals.css (@font-face поверх /public/fonts).
+          Кириллические подмножества грузятся по unicode-range сами, а латинские
+          нужны на каждой странице — их подгружаем заранее, чтобы не ловить FOUT.
+        */}
+        <link
+          rel="preload"
+          href="/fonts/inter-latin.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preload"
+          href="/fonts/inter-cyrillic.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+      </head>
+      {/*
+        min-h-screen, а не min-h-full: процент от высоты родителя требует, чтобы
+        у <html> была задана высота, и на страницах длиннее экрана (например,
+        пользовательское соглашение) это ломает прокрутку.
+      */}
+      <body className="flex min-h-screen flex-col">{children}</body>
     </html>
   );
 }

@@ -34,6 +34,12 @@ There is no test runner configured in this package.
 
 The app never calls the backend origin directly from the browser. `next.config.ts` rewrites `/backend/:path*` → `${BACKEND_URL}/:path*`. The backend mounts its API under `/api/v1` (see `backend/api-spec.yml`), so all frontend requests go through `/backend/api/v1/...`. This keeps `BACKEND_URL` server-only and avoids CORS.
 
+`BACKEND_URL` has a fallback (`http://localhost:4000`) — без него незаданная переменная давала бы destination `undefined/api/v1/...`, и rewrite ломался бы молча.
+
+**Определение IP клиента.** `src/proxy.ts` срезает `X-Forwarded-For`, `X-Real-IP`, `X-Client-IP` и `Forwarded` на пути `/backend/*`. Причина проверена экспериментально: rewrite прокидывает заголовки браузера в destination как есть (запрос с `X-Forwarded-For: 203.0.113.9` доходит до бэкенда с этим значением), а адрес Next входит в `TRUSTED_PROXIES` бэкенда — то есть клиент мог бы подменить себе IP и обойти rate limit. Свой `X-Forwarded-For` Next не добавляет, реального адреса клиента он не знает, поэтому достоверного IP через эту схему не получить в принципе — бэкенду не следует ключевать лимиты по IP, пока перед Next не появится настоящий обратный прокси. Если такой прокси появится, логику в `proxy.ts` нужно пересмотреть.
+
+⚠️ В Next 16 `middleware.ts` переименован в **`proxy.ts`** (экспорт функции `proxy`) — старое имя устарело.
+
 ### API layer (`src/services/`, `src/types/`)
 
 The backend's OpenAPI spec lives at `backend/api-spec.yml` (read-only reference — it is the source of truth for request/response shapes). The frontend mirrors it:
@@ -80,4 +86,23 @@ Standard Next.js App Router under `src/app/` (currently just the root `layout.ts
 
 `src/app/(auth)/` — группа с общей оболочкой (фон #F8F9FF с размытыми пятнами, карточка 420px, копирайт): `/login` и `/register`.
 
-⚠️ `POST /auth/register` **отсутствует** в `backend/api-spec.yml` и в Go-хендлерах. Форма регистрации сделана по макету, `authService.register` бьёт в `/auth/register` и до появления эндпоинта показывает пользователю ошибку. Ссылки `/forgot-password` и `/terms` — заглушки, страниц пока нет.
+⚠️ `POST /auth/register` **намеренно отсутствует в `api-spec.yml`**, но реализован сверх спецификации — сверяться нужно с `backend/internal/api/auth.go` (тело: `email`, `password`, `fullName`, `department`, `position`; ответ 201; 400 — данные, 409 — email занят).
+
+Правила пароля продублированы на клиенте в `register-form.tsx` и обязаны совпадать с `auth.ValidatePassword` (`backend/internal/auth/password.go`): 8+ символов, не длиннее 72 байт, минимум одна буква и одна цифра. При изменении правил на бэкенде править и схему zod.
+
+`/terms` — пользовательское соглашение. Текст лежит в `src/content/terms.md` и **является источником правды**: чтобы обновить документ, правится markdown, вёрстку трогать не нужно. Страница статическая, файл читается через `fs` во время сборки. Рендер — `components/content/markdown.tsx` (react-markdown с картой компонентов на токенах дизайн-системы; плагин `@tailwindcss/typography` намеренно не подключён, он приносит свою шкалу цветов и отступов). Подключён `remark-breaks`: одиночные переносы строк становятся `<br>`, иначе строки вроде «Дата публикации» и «Редакция» склеивались бы в одну.
+
+Ссылка на соглашение со страницы регистрации открывается в новой вкладке — уход со страницы стёр бы уже заполненную форму.
+
+Ссылка `/forgot-password` — заглушка, страницы пока нет.
+
+
+### Внутренние экраны
+
+`src/app/(app)/` — группа с общей оболочкой (`components/app/sidebar.tsx` + `top-bar.tsx`): `/overview` (дашборд состояния и рисков), `/gantt` (диаграмма Ганта), `/tasks/[taskId]` (редактор задачи и симулятор каскадного сдвига), `/projects/new` (мастер инициации проекта).
+
+⚠️ **Экраны работают на демо-данных** — `src/data/demo.ts`. Причина: в бэкенде реализованы только `/auth/*` и `/users/*`, остальные ~40 хендлеров возвращают 501 (`notImplemented` в `backend/internal/api/*.go`), а seed наполняет лишь таблицу пользователей. Фикстуры типизированы боевыми интерфейсами из `@/types`, поэтому переход на API — это замена импортов `demo*` на вызовы соответствующих сервисов, без правок компонентов.
+
+Геометрия Ганта — `src/lib/gantt.ts`: диапазон, колонки месяцев/недель/дней и перевод дат в пиксели. Отрезки и SVG-стрелки связей считаются в одной системе координат от начала диапазона, поэтому не разъезжаются при прокрутке и смене масштаба. «Сегодня» передаётся в `Timeline` пропом, а не берётся из `new Date()` внутри компонента — иначе сервер и клиент отрисовали бы разные даты и получилась бы ошибка гидратации.
+
+Подсветка красным в реестре задач означает «критический путь **и** есть отставание», а не просто принадлежность критическому пути: в макете из четырёх этапов критического пути выделена одна строка — та, что требует вмешательства.
