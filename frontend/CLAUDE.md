@@ -54,3 +54,30 @@ When adding a new endpoint: add/extend the type in `src/types/`, add the method 
 Standard Next.js App Router under `src/app/` (currently just the root `layout.tsx`/`page.tsx`). Path alias `@/*` maps to `./src/*` (see `tsconfig.json`).
 
 `next.config.ts` has `reactCompiler: true` enabled — avoid manual `useMemo`/`useCallback` micro-optimizations that fight the compiler; write plain component code.
+
+### Дизайн-система
+
+Макеты лежат вне репозитория (SVG-экраны: авторизация, регистрация, дашборд, Гант, редактор задачи, мастер проекта). Токены сняты с них напрямую и живут в `src/app/globals.css` в блоке `@theme` (Tailwind v4, без `tailwind.config`):
+
+- **Цвета** — семантические имена, а не шкалы: `brand` (#004AC6) + `brand-hover/active/tint/chip/soft`, `accent` (индиго #4648D4), поверхности `page` (#F8F9FF) / `surface` / `surface-muted` / `surface-subtle`, границы `line` / `line-strong`, текст `ink` / `ink-muted` / `ink-faint`, статусы `success` / `warning` / `danger` (+ `-tint` варианты для подложек).
+- **Радиусы** — в макете ровно два: `rounded-control` (4px, поля/кнопки/чипы) и `rounded-card` (8px, карточки). Не вводить произвольные значения.
+- **Тени** — `shadow-card` и `shadow-popover`.
+- **Шрифты** — Inter (`font-sans`) и JetBrains Mono (`font-mono`, для ID, дат, кодов задач — в макете моноширинный используется как смысловой акцент). Подключены в `src/app/layout.tsx` через `next/font/google` с подмножеством `cyrillic`.
+- **Фокус** — утилита `focus-ring`, применяется как `focus-visible:focus-ring`.
+
+Тёмной темы в макетах нет — дизайн-система намеренно светлая.
+
+### UI-кит (`src/components/`)
+
+- `ui/` — примитивы: `Button` (варианты primary/secondary/soft/ghost/danger/link через CVA), `Input` (слоты `icon`/`trailing`, состояние `invalid`), `PasswordInput`, `Label`, `Checkbox`, `FormField` (подпись + поле + ошибка), `Alert`.
+- `brand/logo.tsx` — `LogoMark` (векторное воспроизведение знака из макета) и `LogoTile`.
+- `auth/` — формы входа и регистрации.
+- `lib/utils.ts` — `cn()` (clsx + tailwind-merge), `lib/session.ts` — клиентская сессия (refreshToken/профиль, «Запомнить меня» → localStorage vs sessionStorage), `lib/api-error-message.ts` — перевод ошибок API в текст для пользователя.
+
+Библиотеки: `lucide-react` (иконки), `class-variance-authority`, `clsx` + `tailwind-merge`, `react-hook-form` + `zod` + `@hookform/resolvers`, `@tanstack/react-query`, `date-fns`, набор `@radix-ui/react-*` (dialog, tabs, dropdown-menu, tooltip, select, popover, progress, avatar, checkbox, label, slot).
+
+### Маршруты авторизации
+
+`src/app/(auth)/` — группа с общей оболочкой (фон #F8F9FF с размытыми пятнами, карточка 420px, копирайт): `/login` и `/register`.
+
+⚠️ `POST /auth/register` **отсутствует** в `backend/api-spec.yml` и в Go-хендлерах. Форма регистрации сделана по макету, `authService.register` бьёт в `/auth/register` и до появления эндпоинта показывает пользователю ошибку. Ссылки `/forgot-password` и `/terms` — заглушки, страниц пока нет.
