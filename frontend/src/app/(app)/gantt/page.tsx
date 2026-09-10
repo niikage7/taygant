@@ -10,30 +10,26 @@ import {
 import { GanttBoard } from "@/components/gantt/gantt-board";
 import { Badge } from "@/components/ui/badge";
 import { useCurrentProject } from "@/data/current-project";
-import {
-  useProject,
-  useProjectDependencies,
-  useTasks,
-} from "@/data/queries";
+import { useGantt, useProject } from "@/data/queries";
 import { formatDate } from "@/lib/format";
 import { getStoredUser } from "@/lib/session";
 
 export default function GanttPage() {
   const { projectId, isEmpty, error: projectsError } = useCurrentProject();
   const project = useProject(projectId);
-  const tasks = useTasks(projectId);
-  const { dependencies, isLoading: dependenciesLoading } = useProjectDependencies(
-    tasks.data,
-  );
+  // Масштаб влияет только на отрисовку, поэтому запрашиваем один раз в weeks:
+  // задачи, связи и вехи от него не зависят.
+  const gantt = useGantt(projectId, "weeks");
 
   if (projectsError) return <PageError error={projectsError} />;
   if (isEmpty) return <EmptyProjects />;
   if (project.error) return <PageError error={project.error} />;
-  if (tasks.error) return <PageError error={tasks.error} />;
-  if (!project.data || !tasks.data) return <PageLoading />;
+  if (gantt.error) return <PageError error={gantt.error} />;
+  if (!project.data || !gantt.data) return <PageLoading />;
 
   const currentUser = getStoredUser();
-  const criticalStages = tasks.data.filter((task) => task.isCriticalPath).length;
+  const { tasks, dependencies } = gantt.data;
+  const criticalStages = tasks.filter((task) => task.isCriticalPath).length;
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-4">
@@ -65,14 +61,13 @@ export default function GanttPage() {
         </p>
       </div>
 
-      {tasks.data.length === 0 ? (
+      {tasks.length === 0 ? (
         <PageLoading label="В проекте пока нет задач — добавьте первую." />
       ) : (
         <GanttBoard
           project={project.data}
-          tasks={tasks.data}
+          tasks={tasks}
           dependencies={dependencies}
-          dependenciesLoading={dependenciesLoading}
           currentUserId={currentUser?.id}
           today={new Date().toISOString().slice(0, 10)}
         />

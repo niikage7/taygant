@@ -28,15 +28,12 @@ export function GanttBoard({
   project,
   tasks,
   dependencies,
-  dependenciesLoading = false,
   currentUserId,
   today,
 }: {
   project: Project;
   tasks: Task[];
   dependencies: TaskDependency[];
-  /** Связи догружаются отдельными запросами — до их прихода стрелок нет. */
-  dependenciesLoading?: boolean;
   currentUserId?: string;
   today: string;
 }) {
@@ -161,9 +158,6 @@ export function GanttBoard({
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-ink-faint">
         <span className="font-semibold tracking-wider uppercase">Легенда связей:</span>
-        {dependenciesLoading ? (
-          <span className="text-ink-faint">Загружаем связи задач…</span>
-        ) : null}
         <span className="flex items-center gap-1.5">
           <span className="h-px w-4 bg-line-strong" /> Обычная (FS)
         </span>

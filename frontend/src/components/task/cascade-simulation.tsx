@@ -54,9 +54,7 @@ export function CascadeSimulation({
                 </span>
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold text-ink">
-                    {task.title}
-                  </p>
+                  <p className="truncate text-[13px] font-semibold text-ink">{task.title}</p>
                   <p className="truncate text-xs text-ink-faint">
                     {task.isCriticalPath ? "Критический путь" : "Финальный этап"} · Исходно:{" "}
                     {formatDate(task.originalStartDate)} — {formatDate(task.originalEndDate)}

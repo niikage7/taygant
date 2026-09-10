@@ -6,29 +6,45 @@ import {
   History,
   Maximize2,
   MessageSquare,
-  Share2,
   PlugZap,
   Waypoints,
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useCallback, useState } from "react";
 import { use } from "react";
 
 import { PageError, PageLoading } from "@/components/app/page-state";
 import { DependencyGraph } from "@/components/task/dependency-graph";
+import { ShareTaskButton } from "@/components/task/share-task-button";
+import { TaskComments } from "@/components/task/task-comments";
+import { TaskHistory } from "@/components/task/task-history";
 import { TaskParams } from "@/components/task/task-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { useCurrentProject } from "@/data/current-project";
-import { useProject, useTaskDetail } from "@/data/queries";
+import { Alert } from "@/components/ui/alert";
+import { useProject, useTaskDetail, useTasks, useUpdateTask } from "@/data/queries";
+import { toUserMessage } from "@/lib/api-error-message";
+import type { TaskUpdateRequest } from "@/types";
 import { TASK_STATUS_META } from "@/lib/task-status";
+import { cn } from "@/lib/utils";
 
 export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">) {
   const { taskId } = use(params);
   const { projectId } = useCurrentProject();
   const project = useProject(projectId);
   const task = useTaskDetail(taskId);
+  const projectTasks = useTasks(projectId);
+  const updateTask = useUpdateTask(taskId);
+
+  const [tab, setTab] = useState<"links" | "history" | "comments">("links");
+  const [draft, setDraft] = useState<TaskUpdateRequest | null>(null);
+  // Колбэк стабилен, иначе эффект в TaskParams пересчитывался бы на каждый рендер.
+  const handleDraftChange = useCallback((next: TaskUpdateRequest | null) => {
+    setDraft(next);
+  }, []);
 
   if (task.error) return <PageError error={task.error} />;
   if (!task.data) return <PageLoading label="Загружаем карточку задачи…" />;
@@ -44,7 +60,10 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
             aria-label="Хлебные крошки"
             className="flex min-w-0 flex-wrap items-center gap-1.5 text-[13px] text-ink-muted"
           >
-            <Link href="/overview" className="rounded-control hover:text-brand focus-visible:focus-ring">
+            <Link
+              href="/overview"
+              className="rounded-control hover:text-brand focus-visible:focus-ring"
+            >
               {project.data?.name ?? "Проект"}
             </Link>
             <ChevronRight className="size-3.5 shrink-0 text-ink-faint" />
@@ -54,8 +73,7 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
           <div className="flex items-center gap-2">
             {detail.externalLink?.synced ? (
               <Badge tone="success" dot size="sm">
-                Синхронизировано ({detail.externalLink.provider} #
-                {detail.externalLink.referenceId})
+                Синхронизировано ({detail.externalLink.provider} #{detail.externalLink.referenceId})
               </Badge>
             ) : null}
             <button
@@ -105,33 +123,45 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
             </div>
 
             <div className="flex items-center gap-2">
-              <Button variant="secondary">
-                <Share2 />
-                Поделиться
-              </Button>
-              <Button>
+              <ShareTaskButton />
+              <Button
+                onClick={() => draft && updateTask.mutate(draft)}
+                disabled={!draft || updateTask.isPending}
+              >
                 <Check />
-                Сохранить изменения
+                {updateTask.isPending
+                  ? "Сохраняем…"
+                  : draft
+                    ? "Сохранить изменения"
+                    : "Изменений нет"}
               </Button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
-            <Badge tone="brand" className="px-3 py-2 font-medium">
-              <Waypoints className="size-3.5" />
-              Связи и влияние (Что, если…)
-            </Badge>
-            <span className="flex items-center gap-2 rounded-control px-3 py-2 text-[13px] text-ink-muted">
-              <History className="size-3.5" />
-              История и журнал аудита
-            </span>
-            <span className="flex items-center gap-2 rounded-control px-3 py-2 text-[13px] text-ink-muted">
-              <MessageSquare className="size-3.5" />
-              Комментарии команды
-              <span className="font-mono text-xs text-ink-faint">
-                {detail.commentsCount}
-              </span>
-            </span>
+          <div
+            role="tablist"
+            aria-label="Разделы задачи"
+            className="flex flex-wrap items-center gap-2 border-t border-line pt-3"
+          >
+            <TabButton
+              active={tab === "links"}
+              onClick={() => setTab("links")}
+              icon={<Waypoints className="size-3.5" />}
+              label="Связи и влияние (Что, если…)"
+            />
+            <TabButton
+              active={tab === "history"}
+              onClick={() => setTab("history")}
+              icon={<History className="size-3.5" />}
+              label="История и журнал аудита"
+            />
+            <TabButton
+              active={tab === "comments"}
+              onClick={() => setTab("comments")}
+              icon={<MessageSquare className="size-3.5" />}
+              label="Комментарии команды"
+              counter={detail.commentsCount}
+            />
           </div>
         </CardBody>
       </Card>
@@ -142,36 +172,91 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
             task={detail}
             project={project.data}
             plannedProgressPercent={Math.max(detail.progressPercent - 5, 0)}
+            onDraftChange={handleDraftChange}
           />
         ) : (
           <PageLoading label="Загружаем проект…" />
         )}
 
         <div className="space-y-4">
-          <DependencyGraph
-            taskNumber={detail.wbsNumber ?? ""}
-            predecessors={detail.predecessors}
-            successors={detail.successors}
-          />
+          {updateTask.isError ? (
+            <Alert tone="danger">
+              {toUserMessage(
+                updateTask.error,
+                { 403: "Недостаточно прав для редактирования задачи" },
+                "Не удалось сохранить изменения",
+              )}
+            </Alert>
+          ) : null}
 
-          <Card>
-            <CardBody className="flex items-start gap-3 py-4">
-              <PlugZap className="mt-0.5 size-4 shrink-0 text-warning" />
-              <p className="text-[13px] text-ink-muted">
-                <span className="font-semibold text-ink">
-                  Симулятор каскадного сдвига сроков появится здесь
-                </span>{" "}
-                после реализации{" "}
-                <code className="font-mono">/tasks/{"{id}"}/simulate-shift</code> и{" "}
-                <code className="font-mono">/apply-shift</code> — сейчас эти эндпоинты
-                возвращают 501. Вёрстка каскадной диаграммы готова
-                (<code className="font-mono">components/task/cascade-simulation.tsx</code>)
-                и подключится без изменений экрана.
-              </p>
-            </CardBody>
-          </Card>
+          {tab === "history" ? <TaskHistory taskId={taskId} /> : null}
+          {tab === "comments" ? <TaskComments taskId={taskId} /> : null}
+
+          {tab === "links" ? (
+            <>
+              <DependencyGraph
+                taskId={taskId}
+                taskNumber={detail.wbsNumber ?? ""}
+                predecessors={detail.predecessors}
+                successors={detail.successors}
+                projectTasks={projectTasks.data ?? []}
+              />
+
+              <Card>
+                <CardBody className="flex items-start gap-3 py-4">
+                  <PlugZap className="mt-0.5 size-4 shrink-0 text-warning" />
+                  <p className="text-[13px] text-ink-muted">
+                    <span className="font-semibold text-ink">
+                      Симулятор каскадного сдвига сроков появится здесь
+                    </span>{" "}
+                    после реализации{" "}
+                    <code className="font-mono">/tasks/{"{id}"}/simulate-shift</code> и{" "}
+                    <code className="font-mono">/apply-shift</code> — сейчас эти эндпоинты
+                    возвращают 501. Вёрстка каскадной диаграммы готова (
+                    <code className="font-mono">components/task/cascade-simulation.tsx</code>) и
+                    подключится без изменений экрана.
+                  </p>
+                </CardBody>
+              </Card>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon,
+  label,
+  counter,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  counter?: number;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-2 rounded-control px-3 py-2 text-[13px] transition-colors focus-visible:focus-ring",
+        active
+          ? "bg-brand-tint font-medium text-brand"
+          : "text-ink-muted hover:bg-surface-muted hover:text-ink",
+      )}
+    >
+      {icon}
+      {label}
+      {counter !== undefined ? (
+        <span className="font-mono text-xs text-ink-faint">{counter}</span>
+      ) : null}
+    </button>
   );
 }

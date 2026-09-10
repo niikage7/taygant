@@ -1,11 +1,15 @@
-import { ArrowLeftToLine, ArrowRightFromLine, Waypoints } from "lucide-react";
+"use client";
 
+import { ArrowLeftToLine, ArrowRightFromLine, Trash2 } from "lucide-react";
+import Link from "next/link";
+
+import { AddDependencyDialog } from "@/components/task/add-dependency-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDate, plural } from "@/lib/format";
+import { useDeleteDependency } from "@/data/queries";
+import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { DependencyType, TaskDependency } from "@/types";
+import type { DependencyType, Task, TaskDependency } from "@/types";
 
 const DEPENDENCY_LABEL: Record<DependencyType, string> = {
   FS: "FS (Окончание-к-Началу)",
@@ -16,15 +20,24 @@ const DEPENDENCY_LABEL: Record<DependencyType, string> = {
 
 /** Сетевой граф связей задачи: предшественники и последователи. */
 export function DependencyGraph({
+  taskId,
   taskNumber,
   predecessors,
   successors,
+  projectTasks,
 }: {
+  taskId: string;
   taskNumber: string;
   predecessors: TaskDependency[];
   successors: TaskDependency[];
+  /** Все задачи проекта — источник выбора для новой связи и подписей номеров. */
+  projectTasks: Task[];
 }) {
-  const criticalSuccessors = successors.filter((item) => item.isCritical).length;
+  const deleteDependency = useDeleteDependency(taskId);
+  const linkedTaskIds = [
+    ...predecessors.map((item) => item.predecessorTaskId),
+    ...successors.map((item) => item.successorTaskId),
+  ];
 
   return (
     <Card>
@@ -35,38 +48,36 @@ export function DependencyGraph({
             Определяет динамический расчёт сроков по алгоритму Critical Path Method (CPM)
           </p>
         </div>
+        <AddDependencyDialog
+          taskId={taskId}
+          candidates={projectTasks}
+          linkedTaskIds={linkedTaskIds}
+        />
       </CardHeader>
-      <CardBody className="space-y-3">
-        <Button variant="secondary" size="sm">
-          <Waypoints />
-          Добавить связь
-        </Button>
 
+      <CardBody>
         <div className="grid gap-3 lg:grid-cols-2">
           <DependencyColumn
             icon={<ArrowLeftToLine className="size-3.5" />}
             title="Входящие связи (предшественники)"
-            counter={`${predecessors.length} ${plural(predecessors.length, ["связь", "связи", "связей"])}`}
-            counterTone="neutral"
             items={predecessors}
-            relatedTitle={(item) => item.predecessorTitle ?? "Задача"}
-            footer={(item) => `Финиш: ${formatDate("2025-11-01")}${item.lagDays ? "" : ""}`}
+            relatedIdOf={(item) => item.predecessorTaskId}
+            relatedTitleOf={(item) => item.predecessorTitle}
+            projectTasks={projectTasks}
+            onDelete={(id) => deleteDependency.mutate(id)}
+            deletingId={deleteDependency.isPending ? deleteDependency.variables : null}
+            emptyText="Предшественников нет — задача может начаться сразу."
           />
           <DependencyColumn
             icon={<ArrowRightFromLine className="size-3.5" />}
             title="Исходящие связи (последователи)"
-            counter={
-              criticalSuccessors > 0
-                ? `${successors.length} связи · Критичные`
-                : `${successors.length} ${plural(successors.length, ["связь", "связи", "связей"])}`
-            }
-            counterTone={criticalSuccessors > 0 ? "danger" : "neutral"}
             items={successors}
-            relatedTitle={(item) => item.successorTitle ?? "Задача"}
-            footer={(item) =>
-              item.isCritical ? "След. старт: 19.11.2025" : "Финиш: 28.11.2025"
-            }
-            footerTone={(item) => (item.isCritical ? "text-danger" : "text-ink-faint")}
+            relatedIdOf={(item) => item.successorTaskId}
+            relatedTitleOf={(item) => item.successorTitle}
+            projectTasks={projectTasks}
+            onDelete={(id) => deleteDependency.mutate(id)}
+            deletingId={deleteDependency.isPending ? deleteDependency.variables : null}
+            emptyText="От этой задачи ничего не зависит."
           />
         </div>
       </CardBody>
@@ -77,22 +88,27 @@ export function DependencyGraph({
 function DependencyColumn({
   icon,
   title,
-  counter,
-  counterTone,
   items,
-  relatedTitle,
-  footer,
-  footerTone,
+  relatedIdOf,
+  relatedTitleOf,
+  projectTasks,
+  onDelete,
+  deletingId,
+  emptyText,
 }: {
   icon: React.ReactNode;
   title: string;
-  counter: string;
-  counterTone: "neutral" | "danger";
   items: TaskDependency[];
-  relatedTitle: (item: TaskDependency) => string;
-  footer: (item: TaskDependency) => string;
-  footerTone?: (item: TaskDependency) => string;
+  relatedIdOf: (item: TaskDependency) => string;
+  relatedTitleOf: (item: TaskDependency) => string | undefined;
+  projectTasks: Task[];
+  onDelete: (dependencyId: string) => void;
+  deletingId: string | null | undefined;
+  emptyText: string;
 }) {
+  const criticalCount = items.filter((item) => item.isCritical).length;
+  const byId = new Map(projectTasks.map((task) => [task.id, task]));
+
   return (
     <section className="rounded-control border border-line">
       <header className="flex items-start justify-between gap-3 border-b border-line px-3 py-2.5">
@@ -103,50 +119,70 @@ function DependencyColumn({
         <span
           className={cn(
             "shrink-0 text-right text-[11px] font-semibold",
-            counterTone === "danger" ? "text-danger" : "text-ink-muted",
+            criticalCount > 0 ? "text-danger" : "text-ink-muted",
           )}
         >
-          {counter}
+          {items.length} {plural(items.length, ["связь", "связи", "связей"])}
+          {criticalCount > 0 ? " · критичные" : ""}
         </span>
       </header>
 
-      <ul className="space-y-2 p-3">
-        {items.map((item) => (
-          <li key={item.id} className="rounded-control bg-surface-subtle p-3">
-            <div className="flex items-start justify-between gap-2">
-              <p className="min-w-0 text-[13px] leading-snug font-medium text-ink">
-                <span className="font-mono text-brand">
-                  #{item.predecessorTitle ? item.predecessorTaskId.replace("t-", "") : item.successorTaskId.replace("t-", "")}
-                </span>{" "}
-                {relatedTitle(item)}
-              </p>
-              <Badge
-                tone={item.isCritical ? "brand" : "success"}
-                size="sm"
-                className="shrink-0"
-              >
-                {item.isCritical ? "Ожидает" : "Завершена"}
-              </Badge>
-            </div>
-            <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="rounded-control bg-surface-muted px-2 py-1 font-mono text-[11px] text-ink-muted">
-                {DEPENDENCY_LABEL[item.type]}
-              </span>
-              <span className="font-mono text-[11px] text-ink-faint">
-                Лаг: {item.lagDays} дн.
-              </span>
-            </p>
-            <p
-              className={cn(
-                "mt-2 font-mono text-[11px]",
-                footerTone?.(item) ?? "text-ink-faint",
-              )}
-            >
-              {footer(item)}
-            </p>
-          </li>
-        ))}
-      </ul>
+      {items.length === 0 ? (
+        <p className="px-3 py-6 text-center text-[13px] text-ink-muted">{emptyText}</p>
+      ) : (
+        <ul className="space-y-2 p-3">
+          {items.map((item) => {
+            const relatedId = relatedIdOf(item);
+            const related = byId.get(relatedId);
+            const title = relatedTitleOf(item) ?? related?.title ?? "Задача";
+
+            return (
+              <li key={item.id} className="rounded-control bg-surface-subtle p-3">
+                <div className="flex items-start justify-between gap-2">
+                  {/* Переход на связанную задачу — граф должен быть проходимым. */}
+                  <Link
+                    href={`/tasks/${relatedId}`}
+                    className="group min-w-0 rounded-control focus-visible:focus-ring"
+                  >
+                    <span className="text-[13px] leading-snug font-medium text-ink group-hover:text-brand">
+                      {related?.wbsNumber ? (
+                        <span className="font-mono text-brand">#{related.wbsNumber} </span>
+                      ) : null}
+                      {title}
+                    </span>
+                  </Link>
+
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {item.isCritical ? (
+                      <Badge tone="danger" size="sm">
+                        Критичная
+                      </Badge>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => onDelete(item.id)}
+                      disabled={deletingId === item.id}
+                      aria-label={`Удалить связь с задачей «${title}»`}
+                      className="rounded-control p-1 text-ink-faint transition-colors hover:text-danger focus-visible:focus-ring disabled:opacity-50"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </span>
+                </div>
+
+                <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="rounded-control bg-surface-muted px-2 py-1 font-mono text-[11px] text-ink-muted">
+                    {DEPENDENCY_LABEL[item.type]}
+                  </span>
+                  <span className="font-mono text-[11px] text-ink-faint">
+                    Лаг: {item.lagDays} дн.
+                  </span>
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

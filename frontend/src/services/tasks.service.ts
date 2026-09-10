@@ -31,13 +31,8 @@ export const tasksService = {
   },
 
   /**
-   * Агрегированные данные диаграммы Ганта.
-   *
-   * ⚠️ НЕ ВЫЗЫВАТЬ: маршрут `GET /projects/{projectId}/gantt` на бэкенде не
-   * зарегистрирован — расчёт критического пути требует CPM-движка, которого
-   * пока нет (см. комментарий в `backend/internal/api/tasks.go`). Запрос вернёт
-   * 404. Экран Ганта собирает задачи и связи отдельными запросами, см.
-   * `useProjectDependencies` в `src/data/queries.ts`.
+   * Агрегированные данные диаграммы Ганта одним запросом: задачи, связи и вехи.
+   * Заменяет обход задач ради их связей — раньше эндпоинта «связи проекта» не было.
    */
   getGantt(projectId: string, params?: GanttParams): Promise<GanttChart> {
     return httpClient.get<GanttChart>(`/projects/${projectId}/gantt`, {

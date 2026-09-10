@@ -1,16 +1,20 @@
 "use client";
 
-import { Building2, CalendarDays, Flag, Repeat2 } from "lucide-react";
-import { useState } from "react";
+import { Building2, Repeat2 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Avatar } from "@/components/ui/avatar";
+import { DateInput } from "@/components/ui/date-input";
+import { Select } from "@/components/ui/select";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { formatDate, formatSigned } from "@/lib/format";
+import { useToggleChecklistItem } from "@/data/queries";
+import { formatSigned } from "@/lib/format";
+import { TASK_STATUS_META } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
-import type { Project, TaskDetail } from "@/types";
+import type { Project, TaskDetail, TaskStatus, TaskUpdateRequest } from "@/types";
 
 const SECTION = "text-[11px] font-semibold tracking-wider text-ink-faint uppercase";
 
@@ -19,17 +23,45 @@ export function TaskParams({
   task,
   project,
   plannedProgressPercent,
+  onDraftChange,
 }: {
   task: TaskDetail;
   project: Project;
   /** Плановый прогресс на сегодня — база для расчёта опережения/отставания. */
   plannedProgressPercent: number;
+  /** Несохранённые правки — страница по ним решает, активна ли кнопка сохранения. */
+  onDraftChange: (draft: TaskUpdateRequest | null) => void;
 }) {
   const [progress, setProgress] = useState(task.progressPercent);
-  const [checklist, setChecklist] = useState(task.checklist);
+  const [status, setStatus] = useState<TaskStatus>(task.status);
+  const [startDate, setStartDate] = useState(task.startDate);
+  const [endDate, setEndDate] = useState(task.endDate);
+  const [description, setDescription] = useState(task.description ?? "");
+
+  const toggleChecklistItem = useToggleChecklistItem(task.id);
+
+  // Сервер — источник истины: после сохранения приходит обновлённая задача,
+  // и локальные поля надо подтянуть, иначе они «залипнут» на старых значениях.
+  useEffect(() => {
+    setProgress(task.progressPercent);
+    setStatus(task.status);
+    setStartDate(task.startDate);
+    setEndDate(task.endDate);
+    setDescription(task.description ?? "");
+  }, [task]);
+
+  useEffect(() => {
+    const draft: TaskUpdateRequest = {};
+    if (progress !== task.progressPercent) draft.progressPercent = progress;
+    if (status !== task.status) draft.status = status;
+    if (startDate !== task.startDate) draft.startDate = startDate;
+    if (endDate !== task.endDate) draft.endDate = endDate;
+    if (description !== (task.description ?? "")) draft.description = description;
+    onDraftChange(Object.keys(draft).length > 0 ? draft : null);
+  }, [progress, status, startDate, endDate, description, task, onDraftChange]);
 
   const deviation = progress - plannedProgressPercent;
-  const doneCount = checklist.filter((item) => item.isDone).length;
+  const doneCount = task.checklist.filter((item) => item.isDone).length;
 
   return (
     <Card className="flex flex-col">
@@ -44,9 +76,7 @@ export function TaskParams({
           <div className="mt-2 flex items-center justify-between gap-3 rounded-control bg-surface-muted px-3 py-2.5">
             <span className="flex min-w-0 items-center gap-2">
               <Building2 className="size-4 shrink-0 text-brand" />
-              <span className="truncate text-[13px] font-medium text-ink">
-                {project.name}
-              </span>
+              <span className="truncate text-[13px] font-medium text-ink">{project.name}</span>
             </span>
             <span className="shrink-0 text-xs text-ink-faint">Релиз 2.1</span>
           </div>
@@ -76,8 +106,30 @@ export function TaskParams({
         <div>
           <p className={SECTION}>График выполнения</p>
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <DateBox label="Начало" value={task.startDate} />
-            <DateBox label="Окончание" value={task.endDate} />
+            <div>
+              <label htmlFor="task-start" className="text-xs text-ink-faint">
+                Начало
+              </label>
+              <DateInput
+                id="task-start"
+                value={startDate}
+                onChange={setStartDate}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label htmlFor="task-end" className="text-xs text-ink-faint">
+                Окончание
+              </label>
+              <DateInput
+                id="task-end"
+                value={endDate}
+                onChange={setEndDate}
+                className="mt-1"
+                minDate={startDate}
+                invalid={endDate < startDate}
+              />
+            </div>
           </div>
           <p className="mt-3 flex items-baseline justify-between gap-3 text-[13px]">
             <span className="text-ink-muted">Длительность задачи:</span>
@@ -85,6 +137,26 @@ export function TaskParams({
               {task.durationCalendarDays} календарных дней ({task.durationWorkingDays} раб.)
             </span>
           </p>
+        </div>
+
+        <div>
+          <label htmlFor="task-status" className={SECTION}>
+            Статус
+          </label>
+          <Select
+            id="task-status"
+            value={status}
+            onChange={(event) => setStatus(event.target.value as TaskStatus)}
+            className="mt-2"
+          >
+            {(["planned", "in_progress", "done", "overdue", "blocked"] as TaskStatus[]).map(
+              (value) => (
+                <option key={value} value={value}>
+                  {TASK_STATUS_META[value].label}
+                </option>
+              ),
+            )}
+          </Select>
         </div>
 
         <div>
@@ -106,9 +178,7 @@ export function TaskParams({
             </span>
           </div>
           <p className="mt-3 flex items-baseline justify-between gap-3 text-[13px]">
-            <span className="text-ink-muted">
-              План на сегодня: {plannedProgressPercent}%
-            </span>
+            <span className="text-ink-muted">План на сегодня: {plannedProgressPercent}%</span>
             <span
               className={cn(
                 "font-medium",
@@ -130,7 +200,8 @@ export function TaskParams({
           <Textarea
             id="task-description"
             rows={7}
-            defaultValue={task.description}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
             className="mt-2"
           />
         </div>
@@ -139,11 +210,11 @@ export function TaskParams({
           <div className="flex items-center justify-between gap-3">
             <p className={SECTION}>Критерии приёмки (DoD)</p>
             <span className="font-mono text-xs text-brand">
-              {doneCount} / {checklist.length} готово
+              {doneCount} / {task.checklist.length} готово
             </span>
           </div>
           <ul className="mt-2 space-y-1.5">
-            {checklist.map((item) => (
+            {task.checklist.map((item) => (
               <li key={item.id}>
                 <label
                   className={cn(
@@ -153,14 +224,12 @@ export function TaskParams({
                 >
                   <Checkbox
                     checked={item.isDone}
+                    disabled={toggleChecklistItem.isPending}
                     onCheckedChange={(checked) =>
-                      setChecklist((current) =>
-                        current.map((entry) =>
-                          entry.id === item.id
-                            ? { ...entry, isDone: checked === true }
-                            : entry,
-                        ),
-                      )
+                      toggleChecklistItem.mutate({
+                        itemId: item.id,
+                        isDone: checked === true,
+                      })
                     }
                     className="mt-0.5"
                   />
@@ -179,18 +248,5 @@ export function TaskParams({
         </div>
       </CardBody>
     </Card>
-  );
-}
-
-function DateBox({ label, value }: { label: string; value: string }) {
-  const Icon = label === "Начало" ? CalendarDays : Flag;
-  return (
-    <div className="rounded-control bg-surface-muted px-3 py-2">
-      <p className="text-xs text-ink-faint">{label}</p>
-      <p className="mt-1 flex items-center gap-1.5 font-mono text-[13px] font-semibold text-ink">
-        <Icon className="size-3.5 text-ink-faint" />
-        {formatDate(value)}
-      </p>
-    </div>
   );
 }
