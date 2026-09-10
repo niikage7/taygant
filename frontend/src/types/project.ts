@@ -36,8 +36,6 @@ export interface Project extends ProjectSummary {
   durationCalendarDays: number;
   /** Рабочий календарь, используемый при расчёте сроков задач. */
   workingCalendarType: WorkingCalendarType;
-  /** Учитывать ли государственные праздники РФ как нерабочие дни. */
-  includePublicHolidays: boolean;
   /**
    * Если true — при сдвиге даты задачи все зависимые задачи по цепочке Finish-to-Start
    * автоматически пересчитываются с сохранением буфера.
@@ -67,8 +65,6 @@ export interface ProjectCreateRequest {
   deadline: string;
   /** Рабочий календарь проекта. */
   workingCalendarType?: WorkingCalendarType;
-  /** Учитывать ли государственные праздники РФ как нерабочие дни. */
-  includePublicHolidays?: boolean;
   /** Включить автоматический пересчёт зависимых задач при сдвиге дат. */
   autoRecalculateDependents?: boolean;
   /** Подсвечивать критический путь на диаграмме Ганта. */

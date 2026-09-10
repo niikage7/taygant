@@ -43,7 +43,6 @@ type projectDTO struct {
 	CustomerOrg               string                     `json:"customerOrg"`
 	DurationCalendarDays      int                        `json:"durationCalendarDays"`
 	WorkingCalendarType       models.WorkingCalendarType `json:"workingCalendarType"`
-	IncludePublicHolidays     bool                       `json:"includePublicHolidays"`
 	AutoRecalculateDependents bool                       `json:"autoRecalculateDependents"`
 	HighlightCriticalPath     bool                       `json:"highlightCriticalPath"`
 	CreatedBy                 *userDTO                   `json:"createdBy"`
@@ -58,7 +57,6 @@ func newProjectDTO(p models.Project, m service.Metrics) projectDTO {
 		CustomerOrg:               p.CustomerOrg,
 		DurationCalendarDays:      p.StartDate.DaysUntil(p.Deadline),
 		WorkingCalendarType:       p.WorkingCalendarType,
-		IncludePublicHolidays:     p.IncludePublicHolidays,
 		AutoRecalculateDependents: p.AutoRecalculateDependents,
 		HighlightCriticalPath:     p.HighlightCriticalPath,
 		CreatedBy:                 newUserDTOPtr(p.CreatedBy),

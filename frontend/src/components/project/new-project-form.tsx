@@ -2,9 +2,10 @@
 
 import {
   addDays,
-  differenceInBusinessDays,
   differenceInCalendarDays,
+  eachDayOfInterval,
   format,
+  getDay,
   parseISO,
 } from "date-fns";
 import {
@@ -46,6 +47,14 @@ const NAME_MAX_LENGTH = 120;
 const toIsoDate = (date: Date) => format(date, "yyyy-MM-dd");
 const SECTION = "text-[11px] font-semibold tracking-wider text-ink-faint uppercase";
 
+// date-fns не умеет считать рабочие дни по шестидневке (там всегда сб+вс — выходные),
+// поэтому дни недели разбираем сами: для "6/1" выходной только воскресенье.
+const countWorkingDays = (start: Date, end: Date, calendar: WorkingCalendarType) =>
+  eachDayOfInterval({ start, end }).filter((day) => {
+    const weekday = getDay(day);
+    return calendar === "6/1" ? weekday !== 0 : weekday !== 0 && weekday !== 6;
+  }).length;
+
 /**
  * Мастер инициации проекта. Все три шага показаны на одной странице — так же,
  * как в макете: пользователь видит целиком, что настраивает, а шаги сверху
@@ -70,7 +79,6 @@ export function NewProjectForm({
   const [calendar, setCalendar] = useState<WorkingCalendarType>("5/2");
   const [autoRecalculate, setAutoRecalculate] = useState(true);
   const [highlightCriticalPath, setHighlightCriticalPath] = useState(true);
-  const [includeHolidays, setIncludeHolidays] = useState(true);
   const [members, setMembers] = useState<DraftMember[]>([]);
 
   const router = useRouter();
@@ -99,7 +107,6 @@ export function NewProjectForm({
       startDate,
       deadline,
       workingCalendarType: calendar,
-      includePublicHolidays: includeHolidays,
       autoRecalculateDependents: autoRecalculate,
       highlightCriticalPath,
       members: members.map((member) => ({
@@ -113,7 +120,7 @@ export function NewProjectForm({
   const end = parseISO(deadline);
   const validRange = end > start;
   const calendarDays = validRange ? differenceInCalendarDays(end, start) + 1 : 0;
-  const workingDays = validRange ? differenceInBusinessDays(end, start) + 1 : 0;
+  const workingDays = validRange ? countWorkingDays(start, end, calendar) : 0;
   const weekendDays = calendarDays - workingDays;
 
   const requiredFilled = name.trim().length > 0 && validRange;
@@ -303,39 +310,26 @@ export function NewProjectForm({
             <CalendarCheck2 className="mt-0.5 size-5 shrink-0 text-brand" />
             <div className="min-w-0">
               <p className="text-[13px] font-semibold text-ink">Рабочий календарь проекта</p>
-              <p className="mt-0.5 text-xs text-ink-muted">
-                Учитывает производственный календарь РФ
-              </p>
             </div>
           </div>
 
-          <div className="flex flex-col items-end gap-2">
-            <div className="flex items-center gap-2">
-              {(["5/2", "6/1"] as const).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setCalendar(option)}
-                  aria-pressed={calendar === option}
-                  className={cn(
-                    "rounded-control px-3 py-2 text-[13px] font-medium transition-colors focus-visible:focus-ring",
-                    calendar === option
-                      ? "bg-brand text-white"
-                      : "border border-line bg-surface text-ink-muted hover:bg-surface-muted",
-                  )}
-                >
-                  {option === "5/2" ? "Стандарт: 5/2 (40 ч/нед)" : "Шестидневка 6/1"}
-                </button>
-              ))}
-            </div>
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-success">
-              <Checkbox
-                checked={includeHolidays}
-                onCheckedChange={(checked) => setIncludeHolidays(checked === true)}
-                className="size-3.5"
-              />
-              Праздники РФ включены
-            </label>
+          <div className="flex items-center gap-2">
+            {(["5/2", "6/1"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setCalendar(option)}
+                aria-pressed={calendar === option}
+                className={cn(
+                  "rounded-control px-3 py-2 text-[13px] font-medium transition-colors focus-visible:focus-ring",
+                  calendar === option
+                    ? "bg-brand text-white"
+                    : "border border-line bg-surface text-ink-muted hover:bg-surface-muted",
+                )}
+              >
+                {option === "5/2" ? "Стандарт: 5/2 (40 ч/нед)" : "Шестидневка 6/1"}
+              </button>
+            ))}
           </div>
         </div>
       </WizardStep>

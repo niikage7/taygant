@@ -1016,10 +1016,6 @@ components:
             workingCalendarType:
               allOf: [{ $ref: "#/components/schemas/WorkingCalendarType" }]
               description: Рабочий календарь, используемый при расчёте сроков задач.
-            includePublicHolidays:
-              type: boolean
-              default: true
-              description: Учитывать ли государственные праздники РФ как нерабочие дни.
             autoRecalculateDependents:
               type: boolean
               default: true
@@ -1068,10 +1064,6 @@ components:
         workingCalendarType:
           allOf: [{ $ref: "#/components/schemas/WorkingCalendarType" }]
           description: Рабочий календарь проекта.
-        includePublicHolidays:
-          type: boolean
-          default: true
-          description: Учитывать ли государственные праздники РФ как нерабочие дни.
         autoRecalculateDependents:
           type: boolean
           default: true
