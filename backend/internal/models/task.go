@@ -52,10 +52,6 @@ type Task struct {
 	ProgressPercent int     `gorm:"not null;default:0"`
 	WeightPercent   float64 `gorm:"not null;default:0"`
 
-	// BufferDays — резерв времени задачи: сдвиг в пределах буфера не двигает
-	// последователей и не сдвигает дедлайн проекта.
-	BufferDays int `gorm:"not null;default:0"`
-
 	// Связь с внешним трекером хранится плоскими колонками: вложенный объект
 	// в ответе собирает DTO, а отдельная таблица ради четырёх полей избыточна.
 	ExternalProvider    string `gorm:"type:varchar(50)"`
@@ -64,12 +60,16 @@ type Task struct {
 	ExternalSynced      bool   `gorm:"not null;default:false"`
 
 	// Ниже — производные поля из комментария выше. gorm:"-" исключает их из
-	// миграции и запросов: сервис задач (internal/service) заполняет их при
-	// чтении, а не хранит. IsCriticalPath пока всегда false — CPM-движок
-	// (internal/schedule) ещё не реализован.
+	// миграции и запросов: сервис задач (internal/service, CPM-движок в
+	// internal/schedule) заполняет их при чтении, а не хранит.
+	//
+	// BufferDays раньше был обычной хранимой колонкой со значением по
+	// умолчанию 0; она осталась в БД неиспользуемой (AutoMigrate не удаляет
+	// колонки) — это ожидаемо и безвредно, не полагаться на её содержимое.
 	DurationCalendarDays int  `gorm:"-"`
 	DurationWorkingDays  int  `gorm:"-"`
 	IsCriticalPath       bool `gorm:"-"`
+	BufferDays           int  `gorm:"-"`
 }
 
 // TableName фиксирует имя таблицы.

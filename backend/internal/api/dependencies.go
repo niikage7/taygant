@@ -23,7 +23,8 @@ func (a *API) dependenciesList(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if _, err := a.requireMemberByTask(c, taskID); err != nil {
+	projectID, err := a.requireMemberByTask(c, taskID)
+	if err != nil {
 		return err
 	}
 
@@ -31,14 +32,18 @@ func (a *API) dependenciesList(c *fiber.Ctx) error {
 	if err != nil {
 		return fail(err)
 	}
+	critical, err := a.tasks.CriticalTaskIDs(c.Context(), projectID)
+	if err != nil {
+		return fail(err)
+	}
 
 	predDTOs := make([]taskDependencyDTO, 0, len(predecessors))
 	for _, d := range predecessors {
-		predDTOs = append(predDTOs, newTaskDependencyDTO(d))
+		predDTOs = append(predDTOs, newTaskDependencyDTO(d, critical))
 	}
 	succDTOs := make([]taskDependencyDTO, 0, len(successors))
 	for _, d := range successors {
-		succDTOs = append(succDTOs, newTaskDependencyDTO(d))
+		succDTOs = append(succDTOs, newTaskDependencyDTO(d, critical))
 	}
 	return c.JSON(fiber.Map{"predecessors": predDTOs, "successors": succDTOs})
 }
@@ -72,7 +77,11 @@ func (a *API) dependenciesCreate(c *fiber.Ctx) error {
 	if err != nil {
 		return fail(err)
 	}
-	return c.Status(fiber.StatusCreated).JSON(newTaskDependencyDTO(dep))
+	critical, err := a.tasks.CriticalTaskIDs(c.Context(), projectID)
+	if err != nil {
+		return fail(err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(newTaskDependencyDTO(dep, critical))
 }
 
 // DELETE /dependencies/{dependencyId} — разорвать зависимость между двумя задачами.

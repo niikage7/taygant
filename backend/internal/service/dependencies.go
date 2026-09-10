@@ -26,6 +26,22 @@ func (s *Dependencies) ProjectID(ctx context.Context, dependencyID uuid.UUID) (u
 	return projectID, err
 }
 
+// ListForProject возвращает все связи проекта (для диаграммы Ганта — там
+// показывается весь граф сразу, а не связи одной задачи).
+func (s *Dependencies) ListForProject(ctx context.Context, projectID uuid.UUID) ([]models.TaskDependency, error) {
+	var deps []models.TaskDependency
+	err := s.db.WithContext(ctx).
+		Preload("PredecessorTask").
+		Preload("SuccessorTask").
+		Joins("JOIN tasks ON tasks.id = task_dependencies.successor_task_id").
+		Where("tasks.project_id = ?", projectID).
+		Find(&deps).Error
+	if err != nil {
+		return nil, fmt.Errorf("выбрать связи проекта: %w", err)
+	}
+	return deps, nil
+}
+
 // List возвращает предшественников и последователей задачи вместе с названиями
 // связанных задач — так фронту не нужен отдельный запрос ради подписи на графе.
 func (s *Dependencies) List(ctx context.Context, taskID uuid.UUID) (predecessors, successors []models.TaskDependency, err error) {

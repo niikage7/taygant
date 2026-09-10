@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"taygant_backend/internal/models"
+	"taygant_backend/internal/schedule"
 )
 
 // Tasks — задачи проекта и вычисляемые поля реестра/диаграммы Ганта.
@@ -29,17 +30,81 @@ func (s *Tasks) ProjectID(ctx context.Context, taskID uuid.UUID) (uuid.UUID, err
 	return projectIDOfTask(ctx, s.db, taskID)
 }
 
+// CriticalTaskIDs возвращает множество задач проекта, лежащих на критическом
+// пути. Нужен сервису связей: TaskDependency.IsCritical в ответе API — это
+// связь между двумя критическими задачами, а сам сервис связей о критическом
+// пути ничего не знает и знать не должен (это забота CPM, а не хранения рёбер).
+func (s *Tasks) CriticalTaskIDs(ctx context.Context, projectID uuid.UUID) (map[uuid.UUID]bool, error) {
+	summary, err := s.ComputeSchedule(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	critical := make(map[uuid.UUID]bool, len(summary.Tasks))
+	for id, r := range summary.Tasks {
+		if r.Critical {
+			critical[id] = true
+		}
+	}
+	return critical, nil
+}
+
+// ComputeSchedule прогоняет CPM по всем задачам проекта и возвращает полный
+// результат (не только критичность отдельных задач, но и Summary.ComputedFinish —
+// естественный срок готовности проекта). Нужен дашборду для scheduleAdherence.
+func (s *Tasks) ComputeSchedule(ctx context.Context, projectID uuid.UUID) (schedule.Summary, error) {
+	graph, err := buildProjectGraph(ctx, s.db, projectID)
+	if err != nil {
+		return schedule.Summary{}, err
+	}
+	return graph.Compute(), nil
+}
+
+// buildProjectGraph загружает задачи и связи проекта одним минимальным набором
+// запросов и собирает из них граф для CPM. Общий код для всех мест, которым
+// нужен граф, а не уже загруженный в памяти список задач (см. applySchedule —
+// та работает над срезом, который вызывающий код уже держит в руках).
+func buildProjectGraph(ctx context.Context, db *gorm.DB, projectID uuid.UUID) (*schedule.Graph, error) {
+	var rows []models.Task
+	err := db.WithContext(ctx).
+		Select("id", "start_date", "end_date").
+		Where("project_id = ?", projectID).
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("выбрать задачи для CPM: %w", err)
+	}
+	deps, err := dependenciesForProject(ctx, db, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes := make([]schedule.Task, len(rows))
+	for i, t := range rows {
+		nodes[i] = schedule.Task{ID: t.ID, Start: t.StartDate, End: t.EndDate}
+	}
+	edges := make([]schedule.Dependency, len(deps))
+	for i, d := range deps {
+		edges[i] = schedule.Dependency{
+			PredecessorID: d.PredecessorTaskID,
+			SuccessorID:   d.SuccessorTaskID,
+			Type:          d.Type,
+			LagDays:       d.LagDays,
+		}
+	}
+	graph, err := schedule.NewGraph(nodes, edges)
+	if err != nil {
+		return nil, fmt.Errorf("рассчитать критический путь: %w", err)
+	}
+	return graph, nil
+}
+
 // Filter — параметры выборки задач из GET /projects/{projectId}/tasks.
-//
-// criticalPathOnly из спецификации здесь не реализован: критический путь
-// требует CPM-движка (internal/schedule), которого пока нет — фильтр вернул бы
-// либо пустой список, либо все задачи, и оба варианта вводят в заблуждение.
 type Filter struct {
-	SprintID   *uuid.UUID
-	AssigneeID *uuid.UUID
-	Status     models.TaskStatus
-	RisksOnly  bool
-	Search     string
+	SprintID         *uuid.UUID
+	AssigneeID       *uuid.UUID
+	Status           models.TaskStatus
+	CriticalPathOnly bool
+	RisksOnly        bool
+	Search           string
 }
 
 // List возвращает задачи проекта с вычисленными статусами и длительностями.
@@ -75,10 +140,16 @@ func (s *Tasks) List(ctx context.Context, projectID uuid.UUID, calendar models.P
 	}
 	resolveStatuses(tasks, statusMap(tasks), deps)
 	applyDerivedFields(tasks, calendar)
+	if err := applySchedule(tasks, deps); err != nil {
+		return nil, err
+	}
 
 	filtered := tasks[:0]
 	for _, t := range tasks {
 		if f.Status != "" && t.Status != f.Status {
+			continue
+		}
+		if f.CriticalPathOnly && !t.IsCriticalPath {
 			continue
 		}
 		if f.RisksOnly && t.PlanVsActualDeviation() >= 0 {
@@ -130,30 +201,53 @@ func statusMap(tasks []models.Task) map[uuid.UUID]models.TaskStatus {
 	return m
 }
 
-// projectStatusMap подгружает хранимые статусы всех задач проекта одним
-// лёгким запросом (без Preload). Нужен там, где resolveStatuses вызывается
-// не для полного списка задач проекта, а для одной задачи (см. Get) —
-// иначе проверка предшественника не сможет узнать его статус.
-func projectStatusMap(ctx context.Context, db *gorm.DB, projectID uuid.UUID) (map[uuid.UUID]models.TaskStatus, error) {
-	var rows []models.Task
-	err := db.WithContext(ctx).
-		Select("id", "status").
-		Where("project_id = ?", projectID).
-		Find(&rows).Error
-	if err != nil {
-		return nil, fmt.Errorf("выбрать статусы задач проекта: %w", err)
-	}
-	return statusMap(rows), nil
-}
-
 // applyDerivedFields считает длительности, которые не хранятся в таблице.
-// Критический путь (IsCriticalPath) требует CPM-движка (internal/schedule)
-// и пока не реализован — до его появления поле остаётся false.
+// IsCriticalPath/BufferDays считает отдельно applySchedule — они требуют
+// не только проекта, но и всего графа связей, которого здесь нет.
 func applyDerivedFields(tasks []models.Task, project models.Project) {
 	for i := range tasks {
 		tasks[i].DurationCalendarDays = tasks[i].StartDate.DaysUntil(tasks[i].EndDate)
 		tasks[i].DurationWorkingDays = workingDaysBetween(tasks[i].StartDate, tasks[i].EndDate, project.WorkingCalendarType)
 	}
+}
+
+// applySchedule прогоняет CPM (internal/schedule) по всем переданным задачам
+// и проставляет IsCriticalPath/BufferDays. tasks должен содержать ВСЕ задачи
+// проекта (как и deps), а не отфильтрованную выборку — иначе расчёт резерва
+// потеряет часть графа и даст неверный результат для оставшихся задач.
+func applySchedule(tasks []models.Task, deps []models.TaskDependency) error {
+	nodes := make([]schedule.Task, len(tasks))
+	for i, t := range tasks {
+		nodes[i] = schedule.Task{ID: t.ID, Start: t.StartDate, End: t.EndDate}
+	}
+	edges := make([]schedule.Dependency, len(deps))
+	for i, d := range deps {
+		edges[i] = schedule.Dependency{
+			PredecessorID: d.PredecessorTaskID,
+			SuccessorID:   d.SuccessorTaskID,
+			Type:          d.Type,
+			LagDays:       d.LagDays,
+		}
+	}
+
+	graph, err := schedule.NewGraph(nodes, edges)
+	if err != nil {
+		// Цикл в графе не должен быть возможен (Dependencies.Create его не
+		// допускает), но если данные всё же рассинхронизировались — лучше
+		// вернуть 500 с понятной причиной, чем молча отдать неверный CPM.
+		return fmt.Errorf("рассчитать критический путь: %w", err)
+	}
+	summary := graph.Compute()
+
+	for i := range tasks {
+		result, ok := summary.Tasks[tasks[i].ID]
+		if !ok {
+			continue
+		}
+		tasks[i].IsCriticalPath = result.Critical
+		tasks[i].BufferDays = result.SlackDays
+	}
+	return nil
 }
 
 // workingDaysBetween считает рабочие дни календаря проекта между двумя датами
@@ -367,27 +461,32 @@ func validateAssignee(tx *gorm.DB, projectID, userID uuid.UUID) error {
 }
 
 // Get возвращает задачу с вычисленными полями.
+//
+// Реализован через List(ctx, task.ProjectID, project, Filter{}) с последующим
+// поиском нужной задачи в результате, а не отдельным расчётом: CPM и
+// resolveStatuses корректны только на полном графе задач проекта — считать их
+// заново специально для одной задачи означало бы либо дублировать всю эту
+// логику, либо (как уже однажды было и привело к живому багу с "вечным
+// blocked") незаметно потерять часть графа.
 func (s *Tasks) Get(ctx context.Context, taskID uuid.UUID) (models.Task, error) {
-	task, err := s.get(ctx, taskID)
+	projectID, err := s.ProjectID(ctx, taskID)
 	if err != nil {
 		return models.Task{}, err
 	}
 	var project models.Project
-	if err := s.db.WithContext(ctx).Select("working_calendar_type").First(&project, "id = ?", task.ProjectID).Error; err != nil {
+	if err := s.db.WithContext(ctx).First(&project, "id = ?", projectID).Error; err != nil {
 		return models.Task{}, fmt.Errorf("найти проект задачи: %w", err)
 	}
-	deps, err := dependenciesForProject(ctx, s.db, task.ProjectID)
+	tasks, err := s.List(ctx, projectID, project, Filter{})
 	if err != nil {
 		return models.Task{}, err
 	}
-	statuses, err := projectStatusMap(ctx, s.db, task.ProjectID)
-	if err != nil {
-		return models.Task{}, err
+	for _, t := range tasks {
+		if t.ID == taskID {
+			return t, nil
+		}
 	}
-	tasks := []models.Task{task}
-	resolveStatuses(tasks, statuses, deps)
-	applyDerivedFields(tasks, project)
-	return tasks[0], nil
+	return models.Task{}, ErrNotFound
 }
 
 // Update частично обновляет задачу, ведёт журнал изменений по каждому

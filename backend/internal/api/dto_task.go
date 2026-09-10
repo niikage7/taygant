@@ -72,7 +72,7 @@ type taskDetailDTO struct {
 	CommentsCount int                 `json:"commentsCount"`
 }
 
-func newTaskDetailDTO(t models.Task, checklist []models.ChecklistItem, predecessors, successors []models.TaskDependency, commentsCount int) taskDetailDTO {
+func newTaskDetailDTO(t models.Task, checklist []models.ChecklistItem, predecessors, successors []models.TaskDependency, commentsCount int, critical map[uuid.UUID]bool) taskDetailDTO {
 	var link *externalLinkDTO
 	if t.ExternalProvider != "" {
 		link = &externalLinkDTO{
@@ -89,11 +89,11 @@ func newTaskDetailDTO(t models.Task, checklist []models.ChecklistItem, predecess
 	}
 	predDTOs := make([]taskDependencyDTO, 0, len(predecessors))
 	for _, d := range predecessors {
-		predDTOs = append(predDTOs, newTaskDependencyDTO(d))
+		predDTOs = append(predDTOs, newTaskDependencyDTO(d, critical))
 	}
 	succDTOs := make([]taskDependencyDTO, 0, len(successors))
 	for _, d := range successors {
-		succDTOs = append(succDTOs, newTaskDependencyDTO(d))
+		succDTOs = append(succDTOs, newTaskDependencyDTO(d, critical))
 	}
 
 	return taskDetailDTO{
@@ -108,9 +108,6 @@ func newTaskDetailDTO(t models.Task, checklist []models.ChecklistItem, predecess
 }
 
 // taskDependencyDTO — схема TaskDependency.
-//
-// IsCritical пока всегда false: признак критического пути связи требует
-// CPM-движка (internal/schedule), которого в проекте ещё нет.
 type taskDependencyDTO struct {
 	ID                uuid.UUID             `json:"id"`
 	PredecessorTaskID uuid.UUID             `json:"predecessorTaskId"`
@@ -122,13 +119,18 @@ type taskDependencyDTO struct {
 	IsCritical        bool                  `json:"isCritical"`
 }
 
-func newTaskDependencyDTO(d models.TaskDependency) taskDependencyDTO {
+// newTaskDependencyDTO собирает представление связи. critical — множество
+// задач проекта на критическом пути (см. Tasks.CriticalTaskIDs): связь
+// считается критической, если обе её стороны на критическом пути.
+// nil-карта — валидный ноль-значение, IsCritical будет false для всех связей.
+func newTaskDependencyDTO(d models.TaskDependency, critical map[uuid.UUID]bool) taskDependencyDTO {
 	dto := taskDependencyDTO{
 		ID:                d.ID,
 		PredecessorTaskID: d.PredecessorTaskID,
 		SuccessorTaskID:   d.SuccessorTaskID,
 		Type:              d.Type,
 		LagDays:           d.LagDays,
+		IsCritical:        critical[d.PredecessorTaskID] && critical[d.SuccessorTaskID],
 	}
 	if d.PredecessorTask != nil {
 		dto.PredecessorTitle = d.PredecessorTask.Title

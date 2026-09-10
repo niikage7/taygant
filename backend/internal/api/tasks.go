@@ -9,13 +9,11 @@ import (
 )
 
 // registerTasksRoutes — тег Tasks: задачи проекта и диаграмма Ганта.
-//
-// GET /projects/{projectId}/gantt здесь не зарегистрирован: критический путь
-// требует CPM-движка (internal/schedule), которого в проекте пока нет.
 func (a *API) registerTasksRoutes(r fiber.Router) {
 	projectTasks := r.Group("/projects/:projectId")
 	projectTasks.Get("/tasks", a.tasksList)
 	projectTasks.Post("/tasks", a.tasksCreate)
+	projectTasks.Get("/gantt", a.tasksGantt)
 
 	tasks := r.Group("/tasks/:taskId")
 	tasks.Get("/", a.tasksGet)
@@ -26,9 +24,7 @@ func (a *API) registerTasksRoutes(r fiber.Router) {
 // GET /projects/{projectId}/tasks — реестр задач проекта / данные для Ганта.
 // Query: sprintId, assigneeId, status, criticalPathOnly, risksOnly, myTasksOnly, search.
 //
-// criticalPathOnly принимается, но не применяется: критический путь ещё не
-// считается (internal/schedule). myTasksOnly подставляет ID текущего
-// пользователя в тот же фильтр, что и assigneeId.
+// myTasksOnly подставляет ID текущего пользователя в тот же фильтр, что и assigneeId.
 // 200 -> []Task.
 func (a *API) tasksList(c *fiber.Ctx) error {
 	projectID, err := pathUUID(c, "projectId")
@@ -58,11 +54,12 @@ func (a *API) tasksList(c *fiber.Ctx) error {
 	}
 
 	tasks, err := a.tasks.List(c.Context(), projectID, m.Project, service.Filter{
-		SprintID:   sprintID,
-		AssigneeID: assigneeID,
-		Status:     status,
-		RisksOnly:  queryBool(c, "risksOnly"),
-		Search:     c.Query("search"),
+		SprintID:         sprintID,
+		AssigneeID:       assigneeID,
+		Status:           status,
+		CriticalPathOnly: queryBool(c, "criticalPathOnly"),
+		RisksOnly:        queryBool(c, "risksOnly"),
+		Search:           c.Query("search"),
 	})
 	if err != nil {
 		return fail(err)
@@ -73,6 +70,53 @@ func (a *API) tasksList(c *fiber.Ctx) error {
 		out = append(out, newTaskDTO(t))
 	}
 	return c.JSON(out)
+}
+
+// ganttScales — допустимые значения query-параметра scale.
+var ganttScales = map[string]bool{"days": true, "weeks": true, "months": true}
+
+// GET /projects/{projectId}/gantt — задачи проекта вместе со связями и
+// рассчитанным критическим путём (CPM), готовые для отрисовки таймлайна.
+// Query: scale (days|weeks|months, по умолчанию weeks). 200 -> GanttChart.
+func (a *API) tasksGantt(c *fiber.Ctx) error {
+	projectID, err := pathUUID(c, "projectId")
+	if err != nil {
+		return err
+	}
+	m, err := a.requireMember(c, projectID)
+	if err != nil {
+		return err
+	}
+
+	scale := c.Query("scale", "weeks")
+	if !ganttScales[scale] {
+		return fiber.NewError(fiber.StatusBadRequest, "scale должен быть days, weeks или months")
+	}
+
+	tasks, err := a.tasks.List(c.Context(), projectID, m.Project, service.Filter{})
+	if err != nil {
+		return fail(err)
+	}
+	deps, err := a.dependencies.ListForProject(c.Context(), projectID)
+	if err != nil {
+		return fail(err)
+	}
+	milestones, err := a.milestones.List(c.Context(), projectID)
+	if err != nil {
+		return fail(err)
+	}
+
+	rangeStart, rangeEnd := m.Project.StartDate, m.Project.Deadline
+	for _, t := range tasks {
+		if t.StartDate.Before(rangeStart) {
+			rangeStart = t.StartDate
+		}
+		if t.EndDate.After(rangeEnd) {
+			rangeEnd = t.EndDate
+		}
+	}
+
+	return c.JSON(newGanttChartDTO(projectID, scale, rangeStart, rangeEnd, tasks, deps, milestones))
 }
 
 // taskPredecessorRequest — элемент TaskCreateRequest.predecessors.
@@ -145,7 +189,8 @@ func (a *API) tasksGet(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if _, err := a.requireMemberByTask(c, taskID); err != nil {
+	projectID, err := a.requireMemberByTask(c, taskID)
+	if err != nil {
 		return err
 	}
 
@@ -165,8 +210,12 @@ func (a *API) tasksGet(c *fiber.Ctx) error {
 	if err != nil {
 		return fail(err)
 	}
+	critical, err := a.tasks.CriticalTaskIDs(c.Context(), projectID)
+	if err != nil {
+		return fail(err)
+	}
 
-	return c.JSON(newTaskDetailDTO(task, checklist, predecessors, successors, len(comments)))
+	return c.JSON(newTaskDetailDTO(task, checklist, predecessors, successors, len(comments), critical))
 }
 
 // taskUpdateRequest — тело PATCH /tasks/{taskId}.

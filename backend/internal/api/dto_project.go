@@ -140,3 +140,49 @@ func newMilestoneDTO(m models.Milestone) milestoneDTO {
 
 // rfc3339 — формат date-time из api-spec.yml.
 const rfc3339 = "2006-01-02T15:04:05Z07:00"
+
+// ganttChartDTO — схема GanttChart.
+type ganttChartDTO struct {
+	ProjectID           uuid.UUID           `json:"projectId"`
+	Scale               string              `json:"scale"`
+	RangeStart          models.Date         `json:"rangeStart"`
+	RangeEnd            models.Date         `json:"rangeEnd"`
+	CriticalPathTaskIDs []uuid.UUID         `json:"criticalPathTaskIds"`
+	Tasks               []taskDTO           `json:"tasks"`
+	Dependencies        []taskDependencyDTO `json:"dependencies"`
+	Milestones          []milestoneDTO      `json:"milestones"`
+}
+
+func newGanttChartDTO(projectID uuid.UUID, scale string, rangeStart, rangeEnd models.Date, tasks []models.Task, deps []models.TaskDependency, milestones []models.Milestone) ganttChartDTO {
+	critical := make(map[uuid.UUID]bool, len(tasks))
+	criticalIDs := make([]uuid.UUID, 0, len(tasks))
+	taskDTOs := make([]taskDTO, 0, len(tasks))
+	for _, t := range tasks {
+		taskDTOs = append(taskDTOs, newTaskDTO(t))
+		if t.IsCriticalPath {
+			critical[t.ID] = true
+			criticalIDs = append(criticalIDs, t.ID)
+		}
+	}
+
+	depDTOs := make([]taskDependencyDTO, 0, len(deps))
+	for _, d := range deps {
+		depDTOs = append(depDTOs, newTaskDependencyDTO(d, critical))
+	}
+
+	milestoneDTOs := make([]milestoneDTO, 0, len(milestones))
+	for _, m := range milestones {
+		milestoneDTOs = append(milestoneDTOs, newMilestoneDTO(m))
+	}
+
+	return ganttChartDTO{
+		ProjectID:           projectID,
+		Scale:               scale,
+		RangeStart:          rangeStart,
+		RangeEnd:            rangeEnd,
+		CriticalPathTaskIDs: criticalIDs,
+		Tasks:               taskDTOs,
+		Dependencies:        depDTOs,
+		Milestones:          milestoneDTOs,
+	}
+}
