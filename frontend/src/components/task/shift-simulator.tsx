@@ -35,9 +35,12 @@ export function ShiftSimulator({
   const simulation = applyShift.data ?? simulate.data;
   const wbsOf = new Map(projectTasks.map((task) => [task.id, task.wbsNumber]));
 
+  // Отфильтровываем задачи, которых нет в списке проекта: показать сырой UUID
+  // хуже, чем не упомянуть задачу в тексте уведомления.
   const affectedNumbers = (simulation?.affectedTasks ?? [])
     .filter((affected) => affected.taskId !== taskId)
-    .map((affected) => wbsOf.get(affected.taskId) ?? affected.taskId);
+    .map((affected) => wbsOf.get(affected.taskId))
+    .filter((number): number is string => Boolean(number));
 
   return (
     <div className="space-y-3">
@@ -99,6 +102,7 @@ export function ShiftSimulator({
         <CascadeSimulation
           simulation={simulation}
           affectedNumbers={affectedNumbers}
+          numberOf={(id) => wbsOf.get(id)}
           isApplying={applyShift.isPending}
           onCancel={() => {
             simulate.reset();
