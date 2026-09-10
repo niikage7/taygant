@@ -11,9 +11,9 @@ func main() {
 
 	app := fiber.New()
 
-	app.Listen(":4000")
-
 	app.Get("/ping", func(c *fiber.Ctx) error {
 		return c.SendString("pong")
 	})
+	
+	app.Listen(":4000")
 }
