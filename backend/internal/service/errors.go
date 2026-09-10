@@ -6,6 +6,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"unicode/utf8"
 )
 
 // Доменные ошибки. Сервисы не знают про HTTP-коды — сопоставление кодам
@@ -42,4 +43,16 @@ func AsValidation(err error) (*ValidationError, bool) {
 	var target *ValidationError
 	ok := errors.As(err, &target)
 	return target, ok
+}
+
+// checkMaxLen проверяет длину строки в символах (не байтах — utf8.RuneCountInString),
+// иначе кириллица и другой не-ASCII текст ограничивались бы втрое строже, чем
+// заявлено в спецификации и колонках БД (varchar считает символы, не байты).
+// Ограничение из БД (varchar) само по себе на 500 — эта проверка нужна, чтобы
+// вернуть 400 до INSERT.
+func checkMaxLen(field, value string, max int) error {
+	if utf8.RuneCountInString(value) > max {
+		return Invalid("%s не может быть длиннее %d символов", field, max)
+	}
+	return nil
 }

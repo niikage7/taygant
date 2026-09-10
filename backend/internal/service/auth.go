@@ -46,8 +46,21 @@ func (s *Auth) Register(ctx context.Context, in RegisterInput) (models.User, Tok
 	if email == "" || !strings.Contains(email, "@") {
 		return models.User{}, TokenPair{}, Invalid("укажите корректный email")
 	}
-	if strings.TrimSpace(in.FullName) == "" {
+	if err := checkMaxLen("email", email, 320); err != nil {
+		return models.User{}, TokenPair{}, err
+	}
+	fullName := strings.TrimSpace(in.FullName)
+	if fullName == "" {
 		return models.User{}, TokenPair{}, Invalid("укажите имя пользователя")
+	}
+	if err := checkMaxLen("имя пользователя", fullName, 255); err != nil {
+		return models.User{}, TokenPair{}, err
+	}
+	if err := checkMaxLen("отдел", strings.TrimSpace(in.Department), 255); err != nil {
+		return models.User{}, TokenPair{}, err
+	}
+	if err := checkMaxLen("должность", strings.TrimSpace(in.Position), 255); err != nil {
+		return models.User{}, TokenPair{}, err
 	}
 	if err := auth.ValidatePassword(in.Password); err != nil {
 		return models.User{}, TokenPair{}, &ValidationError{Message: err.Error()}

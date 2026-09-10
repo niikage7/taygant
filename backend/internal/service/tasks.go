@@ -300,7 +300,10 @@ func (s *Tasks) Create(ctx context.Context, projectID, actorID uuid.UUID, in Tas
 	if in.Title == nil || strings.TrimSpace(*in.Title) == "" {
 		return models.Task{}, Invalid("укажите название задачи")
 	}
-	if in.StartDate == nil || in.EndDate == nil {
+	if err := checkMaxLen("название задачи", strings.TrimSpace(*in.Title), 255); err != nil {
+		return models.Task{}, err
+	}
+	if in.StartDate == nil || in.EndDate == nil || in.StartDate.IsZero() || in.EndDate.IsZero() {
 		return models.Task{}, Invalid("укажите сроки задачи")
 	}
 	if in.EndDate.Before(*in.StartDate) {
@@ -516,6 +519,9 @@ func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskIn
 			if title == "" {
 				return Invalid("название задачи не может быть пустым")
 			}
+			if err := checkMaxLen("название задачи", title, 255); err != nil {
+				return err
+			}
 			task.Title = title
 		}
 		if in.Description != nil {
@@ -534,9 +540,15 @@ func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskIn
 			}
 		}
 		if in.StartDate != nil {
+			if in.StartDate.IsZero() {
+				return Invalid("дата начала не может быть пустой")
+			}
 			task.StartDate = *in.StartDate
 		}
 		if in.EndDate != nil {
+			if in.EndDate.IsZero() {
+				return Invalid("дата окончания не может быть пустой")
+			}
 			task.EndDate = *in.EndDate
 		}
 		if task.EndDate.Before(task.StartDate) {

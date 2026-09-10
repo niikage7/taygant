@@ -40,6 +40,9 @@ func (s *Members) Add(ctx context.Context, projectID uuid.UUID, in MemberInput) 
 	if !in.ProjectRole.Valid() {
 		return models.ProjectMember{}, Invalid("недопустимая роль участника %q", in.ProjectRole)
 	}
+	if err := checkMaxLen("роль в спринте", in.SprintRole, 120); err != nil {
+		return models.ProjectMember{}, err
+	}
 	accessLevel := in.AccessLevel
 	if accessLevel == "" {
 		accessLevel = models.AccessLevelEdit
@@ -93,6 +96,9 @@ func (s *Members) Update(ctx context.Context, projectID, memberID uuid.UUID, in 
 		member.ProjectRole = *in.ProjectRole
 	}
 	if in.SprintRole != nil {
+		if err := checkMaxLen("роль в спринте", *in.SprintRole, 120); err != nil {
+			return models.ProjectMember{}, err
+		}
 		member.SprintRole = *in.SprintRole
 	}
 	if in.AccessLevel != nil {

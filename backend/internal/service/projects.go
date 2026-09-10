@@ -133,6 +133,12 @@ func (s *Projects) Create(ctx context.Context, userID uuid.UUID, in CreateInput)
 	if name == "" {
 		return models.Project{}, Invalid("укажите название проекта")
 	}
+	if err := checkMaxLen("название проекта", name, 120); err != nil {
+		return models.Project{}, err
+	}
+	if err := checkMaxLen("заказчик", strings.TrimSpace(in.CustomerOrg), 255); err != nil {
+		return models.Project{}, err
+	}
 	if in.StartDate.IsZero() || in.Deadline.IsZero() {
 		return models.Project{}, Invalid("укажите сроки проекта")
 	}
@@ -191,6 +197,9 @@ func (s *Projects) Create(ctx context.Context, userID uuid.UUID, in CreateInput)
 			}
 			if !m.ProjectRole.Valid() {
 				return Invalid("недопустимая роль участника %q", m.ProjectRole)
+			}
+			if err := checkMaxLen("роль в спринте", strings.TrimSpace(m.SprintRole), 120); err != nil {
+				return err
 			}
 			accessLevel := m.AccessLevel
 			if accessLevel == "" {
@@ -263,6 +272,9 @@ func (s *Projects) Update(ctx context.Context, projectID uuid.UUID, in UpdateInp
 		if name == "" {
 			return models.Project{}, Invalid("название проекта не может быть пустым")
 		}
+		if err := checkMaxLen("название проекта", name, 120); err != nil {
+			return models.Project{}, err
+		}
 		project.Name = name
 	}
 	if in.Description != nil {
@@ -275,7 +287,11 @@ func (s *Projects) Update(ctx context.Context, projectID uuid.UUID, in UpdateInp
 		project.Status = *in.Status
 	}
 	if in.Phase != nil {
-		project.Phase = strings.TrimSpace(*in.Phase)
+		phase := strings.TrimSpace(*in.Phase)
+		if err := checkMaxLen("фаза", phase, 255); err != nil {
+			return models.Project{}, err
+		}
+		project.Phase = phase
 	}
 	if in.StartDate != nil {
 		project.StartDate = *in.StartDate

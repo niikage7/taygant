@@ -85,6 +85,12 @@ func (in MilestoneInput) validate() error {
 	if strings.TrimSpace(in.Name) == "" {
 		return Invalid("укажите название контрольной точки")
 	}
+	if err := checkMaxLen("название контрольной точки", strings.TrimSpace(in.Name), 255); err != nil {
+		return err
+	}
+	if err := checkMaxLen("код контрольной точки", strings.TrimSpace(in.Code), 32); err != nil {
+		return err
+	}
 	if in.PlannedDate.IsZero() {
 		return Invalid("укажите плановую дату контрольной точки")
 	}

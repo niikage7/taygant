@@ -49,6 +49,12 @@ func (in SprintInput) validate() error {
 	if strings.TrimSpace(in.Name) == "" {
 		return Invalid("укажите название спринта")
 	}
+	if err := checkMaxLen("название спринта", strings.TrimSpace(in.Name), 255); err != nil {
+		return err
+	}
+	if err := checkMaxLen("версия релиза", strings.TrimSpace(in.ReleaseVersion), 50); err != nil {
+		return err
+	}
 	if in.StartDate.IsZero() || in.EndDate.IsZero() {
 		return Invalid("укажите сроки спринта")
 	}
