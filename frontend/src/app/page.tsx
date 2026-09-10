@@ -4,16 +4,16 @@ import Image from "next/image";
 import { useState } from "react";
 
 export default function Home() {
-  const [response, setResponse] = useState<string | null>(null);
+  const [response, setResponse] = useState<string>("Fuck you");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handlePing() {
     setLoading(true);
     setError(null);
-    setResponse(null);
+    setResponse("Fuck you");
     try {
-      const res = await fetch("http://localhost:4000/ping");
+      const res = await fetch("/backend/ping");
       if (!res.ok) {
         throw new Error(`Request failed with status ${res.status}`);
       }
@@ -27,7 +27,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
+    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 dark:bg-black">
       <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
         <Image
           className="dark:invert h-5 w-[100px]"
@@ -43,7 +43,7 @@ export default function Home() {
           </h1>
           <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
             Send a request to{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
+            <code className="rounded bg-black/[.06] px-1.5 py-0.5 text-[0.9em] dark:bg-white/[.08]">
               http://localhost:4000/ping
             </code>{" "}
             and see the response below.
@@ -57,12 +57,12 @@ export default function Home() {
             {loading ? "Pinging..." : "Ping backend"}
           </button>
           {response && (
-            <p className="rounded bg-black/[.06] px-3 py-2 font-mono text-sm text-black dark:bg-white/[.08] dark:text-zinc-50">
+            <p className="rounded bg-black/[.06] px-3 py-2 text-sm text-black dark:bg-white/[.08] dark:text-zinc-50">
               Response: {response}
             </p>
           )}
           {error && (
-            <p className="rounded bg-red-100 px-3 py-2 font-mono text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+            <p className="rounded bg-red-100 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
               Error: {error}
             </p>
           )}
