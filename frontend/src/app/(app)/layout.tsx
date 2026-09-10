@@ -6,7 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { PageLoading } from "@/components/app/page-state";
 import { Sidebar } from "@/components/app/sidebar";
 import { TopBar } from "@/components/app/top-bar";
-import { useProjects } from "@/data/queries";
+import { useProjects, useTasks } from "@/data/queries";
 import { getAccessToken } from "@/services/http-client";
 
 /**
@@ -32,6 +32,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const projects = useProjects();
   const project = projects.data?.[0];
+  // Тот же ключ, что и на экране Ганта, — React Query переиспользует ответ,
+  // лишнего запроса не будет.
+  const tasks = useTasks(project?.id);
+  const firstTaskId = tasks.data?.[0]?.id;
 
   if (authorized === null) {
     return (
@@ -49,6 +53,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         projectName={project?.name ?? "Проект не выбран"}
         healthIndex={project?.healthIndex ?? 0}
         criticalRisksCount={project?.criticalRisksCount ?? 0}
+        detailsHref={firstTaskId ? `/tasks/${firstTaskId}` : null}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />

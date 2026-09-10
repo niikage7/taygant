@@ -60,7 +60,7 @@ export function RegisterForm() {
     try {
       const session = await authService.register(values);
       startSession(session, true);
-      router.push("/");
+      router.push("/overview");
       router.refresh();
     } catch (error) {
       setFormError(

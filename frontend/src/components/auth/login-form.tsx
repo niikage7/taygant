@@ -52,7 +52,7 @@ export function LoginForm() {
         password: values.password,
       });
       startSession(session, values.remember);
-      router.push("/");
+      router.push("/overview");
       router.refresh();
     } catch (error) {
       setFormError(

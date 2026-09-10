@@ -22,23 +22,39 @@ type NavItem = {
   icon: ComponentType<{ className?: string }>;
 };
 
-const NAV_ITEMS: NavItem[] = [
-  { href: "/gantt", label: "Диаграмма Ганта", icon: BarChart3 },
-  { href: "/overview", label: "Обзор и Аналитика", icon: LineChart },
-  { href: "/tasks/t-4", label: "Детали и Зависимости", icon: GitBranch },
-  { href: "/projects/new", label: "Новый проект", icon: CirclePlus },
-];
+/**
+ * «Детали и Зависимости» ведут на конкретную задачу, поэтому адрес известен
+ * только когда задачи проекта загружены. Пока их нет, пункт остаётся видимым,
+ * но неактивным — исчезающий и появляющийся пункт меню читался бы как сбой.
+ */
+function navItems(detailsHref: string | null): (NavItem & { disabled?: boolean })[] {
+  return [
+    { href: "/gantt", label: "Диаграмма Ганта", icon: BarChart3 },
+    { href: "/overview", label: "Обзор и Аналитика", icon: LineChart },
+    {
+      href: detailsHref ?? "/gantt",
+      label: "Детали и Зависимости",
+      icon: GitBranch,
+      disabled: !detailsHref,
+    },
+    { href: "/projects/new", label: "Новый проект", icon: CirclePlus },
+  ];
+}
 
 export function Sidebar({
   projectName,
   healthIndex,
   criticalRisksCount,
+  detailsHref = null,
 }: {
   projectName: string;
   healthIndex: number;
   criticalRisksCount: number;
+  /** Адрес первой задачи проекта для пункта «Детали и Зависимости». */
+  detailsHref?: string | null;
 }) {
   const pathname = usePathname();
+  const items = navItems(detailsHref);
 
   return (
     <aside className="flex w-70 shrink-0 flex-col border-r border-line bg-surface">
@@ -62,25 +78,41 @@ export function Sidebar({
           Рабочее пространство
         </p>
         <ul className="space-y-0.5">
-          {NAV_ITEMS.map((item) => {
+          {items.map((item) => {
             const active =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
+            const className = cn(
+              "flex items-center gap-2.5 rounded-control px-2.5 py-2.5 text-sm transition-colors",
+              active
+                ? "bg-brand-tint font-semibold text-brand"
+                : "text-ink-muted",
+              item.disabled
+                ? "cursor-not-allowed opacity-50"
+                : "hover:bg-surface-muted hover:text-ink focus-visible:focus-ring",
+            );
+
             return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-control px-2.5 py-2.5 text-sm transition-colors focus-visible:focus-ring",
-                    active
-                      ? "bg-brand-tint font-semibold text-brand"
-                      : "text-ink-muted hover:bg-surface-muted hover:text-ink",
-                  )}
-                >
-                  <Icon className="size-4 shrink-0" />
-                  {item.label}
-                </Link>
+              <li key={item.label}>
+                {item.disabled ? (
+                  <span
+                    aria-disabled
+                    title="Появится, когда в проекте будут задачи"
+                    className={className}
+                  >
+                    <Icon className="size-4 shrink-0" />
+                    {item.label}
+                  </span>
+                ) : (
+                  <Link
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    className={className}
+                  >
+                    <Icon className="size-4 shrink-0" />
+                    {item.label}
+                  </Link>
+                )}
               </li>
             );
           })}
