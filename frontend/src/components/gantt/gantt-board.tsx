@@ -1,8 +1,9 @@
 "use client";
 
-import { Download, Plus, TriangleAlert, User, X, Waypoints, CircleAlert } from "lucide-react";
+import { CircleAlert, Plus, TriangleAlert, User, Waypoints, X } from "lucide-react";
 import { useState } from "react";
 
+import { CreateTaskDialog } from "@/components/gantt/create-task-dialog";
 import { TaskTable } from "@/components/gantt/task-table";
 import { Timeline } from "@/components/gantt/timeline";
 import { Button } from "@/components/ui/button";
@@ -43,9 +44,7 @@ export function GanttBoard({
 
   const toggleFilter = (filter: Filter) =>
     setFilters((current) =>
-      current.includes(filter)
-        ? current.filter((item) => item !== filter)
-        : [...current, filter],
+      current.includes(filter) ? current.filter((item) => item !== filter) : [...current, filter],
     );
 
   const visibleTasks = tasks.filter((task) => {
@@ -55,7 +54,9 @@ export function GanttBoard({
     return true;
   });
 
-  const criticalTask = tasks.find((task) => task.isCriticalPath && task.planVsActualDeviationDays < 0);
+  const criticalTask = tasks.find(
+    (task) => task.isCriticalPath && task.planVsActualDeviationDays < 0,
+  );
 
   return (
     <div className="space-y-3">
@@ -91,14 +92,16 @@ export function GanttBoard({
         </span>
 
         <span className="ml-auto flex items-center gap-2">
-          <Button variant="secondary">
-            <Download />
-            Экспорт
-          </Button>
-          <Button>
-            <Plus />
-            Задача
-          </Button>
+          <CreateTaskDialog
+            projectId={project.id}
+            projectTasks={tasks}
+            trigger={
+              <Button>
+                <Plus />
+                Задача
+              </Button>
+            }
+          />
         </span>
       </div>
 
@@ -107,9 +110,8 @@ export function GanttBoard({
           <TriangleAlert className="size-4 shrink-0 text-danger" />
           <p className="min-w-0 flex-1 truncate text-[13px] text-danger">
             <span className="font-semibold">Критический путь под угрозой:</span> Задача #
-            {criticalTask.wbsNumber}{" "}
-            <span className="font-mono">«{criticalTask.title}»</span> имеет отставание.
-            Задержка на {Math.abs(criticalTask.planVsActualDeviationDays)} дн.
+            {criticalTask.wbsNumber} <span className="font-mono">«{criticalTask.title}»</span> имеет
+            отставание. Задержка на {Math.abs(criticalTask.planVsActualDeviationDays)} дн.
           </p>
           <button
             type="button"
@@ -147,13 +149,19 @@ export function GanttBoard({
           />
         </div>
 
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-[13px] text-ink-faint transition-colors hover:bg-surface-subtle hover:text-ink-muted focus-visible:focus-ring"
-        >
-          <Plus className="size-4" />
-          Добавить новую подзадачу или связь…
-        </button>
+        <CreateTaskDialog
+          projectId={project.id}
+          projectTasks={tasks}
+          trigger={
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-[13px] text-ink-faint transition-colors hover:bg-surface-subtle hover:text-ink-muted focus-visible:focus-ring"
+            >
+              <Plus className="size-4" />
+              Добавить задачу или веху…
+            </button>
+          }
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-ink-faint">

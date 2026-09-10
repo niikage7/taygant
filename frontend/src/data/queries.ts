@@ -1,17 +1,15 @@
 "use client";
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type UseQueryResult,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 
 import {
   checklistService,
   commentsService,
+  dashboardService,
   dependenciesService,
   historyService,
+  membersService,
+  simulationService,
   milestonesService,
   projectsService,
   tasksService,
@@ -21,9 +19,15 @@ import type {
   GanttChart,
   GanttScale,
   HistoryEntry,
+  ApplyShiftRequest,
   Project,
+  ProjectDashboard,
+  ProjectMember,
   ProjectSummary,
+  ShiftSimulation,
+  SimulateShiftRequest,
   Task,
+  TaskCreateRequest,
   TaskDependencyCreateRequest,
   TaskDetail,
   TaskUpdateRequest,
@@ -35,7 +39,7 @@ import type {
  * Состояние бэкенда на момент написания (см. `backend/internal/api/`):
  * реализованы projects, tasks (включая `/gantt`), dependencies, milestones,
  * members, sprints, checklist, comments, history, users и auth.
- * Возвращают 501: dashboard, workload, simulation и export.
+ * Возвращают 501 только `workload` и `export`.
  */
 
 export const queryKeys = {
@@ -43,11 +47,12 @@ export const queryKeys = {
   project: (id: string) => ["projects", id] as const,
   tasks: (projectId: string) => ["projects", projectId, "tasks"] as const,
   milestones: (projectId: string) => ["projects", projectId, "milestones"] as const,
-  gantt: (projectId: string, scale: string) =>
-    ["projects", projectId, "gantt", scale] as const,
+  gantt: (projectId: string, scale: string) => ["projects", projectId, "gantt", scale] as const,
   taskDependencies: (taskId: string) => ["tasks", taskId, "dependencies"] as const,
   taskHistory: (taskId: string) => ["tasks", taskId, "history"] as const,
   taskComments: (taskId: string) => ["tasks", taskId, "comments"] as const,
+  dashboard: (projectId: string) => ["projects", projectId, "dashboard"] as const,
+  members: (projectId: string) => ["projects", projectId, "members"] as const,
   task: (taskId: string) => ["tasks", taskId] as const,
 };
 
@@ -173,11 +178,73 @@ export function useDeleteDependency(taskId: string) {
   });
 }
 
+export function useAddChecklistItem(taskId: string) {
+  const invalidate = useTaskInvalidation(taskId);
+  return useMutation({
+    mutationFn: (text: string) => checklistService.add(taskId, { text }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteChecklistItem(taskId: string) {
+  const invalidate = useTaskInvalidation(taskId);
+  return useMutation({
+    mutationFn: (itemId: string) => checklistService.remove(itemId),
+    onSuccess: invalidate,
+  });
+}
+
 export function useToggleChecklistItem(taskId: string) {
   const invalidate = useTaskInvalidation(taskId);
   return useMutation({
     mutationFn: ({ itemId, isDone }: { itemId: string; isDone: boolean }) =>
       checklistService.update(itemId, { isDone }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDashboard(projectId: string | undefined): UseQueryResult<ProjectDashboard> {
+  return useQuery({
+    queryKey: queryKeys.dashboard(projectId ?? ""),
+    queryFn: () => dashboardService.get(projectId as string),
+    enabled: Boolean(projectId),
+  });
+}
+
+export function useProjectMembers(projectId: string | undefined): UseQueryResult<ProjectMember[]> {
+  return useQuery({
+    queryKey: queryKeys.members(projectId ?? ""),
+    queryFn: () => membersService.list(projectId as string),
+    enabled: Boolean(projectId),
+  });
+}
+
+export function useCreateTask(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: TaskCreateRequest) => tasksService.create(projectId as string, payload),
+    // Новая задача меняет и реестр Ганта, и метрики обзора.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
+/**
+ * What-if расчёт сдвига. Это чтение, а не изменение плана, но выполняется по
+ * запросу пользователя, поэтому мутация, а не query: иначе React Query
+ * пересчитывал бы сценарий сам при каждом фокусе окна.
+ */
+export function useSimulateShift(taskId: string) {
+  return useMutation({
+    mutationFn: (payload: SimulateShiftRequest): Promise<ShiftSimulation> =>
+      simulationService.simulateShift(taskId, payload),
+  });
+}
+
+export function useApplyShift(taskId: string) {
+  const invalidate = useTaskInvalidation(taskId);
+  return useMutation({
+    mutationFn: (payload: ApplyShiftRequest): Promise<ShiftSimulation> =>
+      simulationService.applyShift(taskId, payload),
     onSuccess: invalidate,
   });
 }

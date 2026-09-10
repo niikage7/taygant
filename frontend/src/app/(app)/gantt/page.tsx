@@ -2,11 +2,7 @@
 
 import { CalendarDays, CircleCheck, Waypoints } from "lucide-react";
 
-import {
-  EmptyProjects,
-  PageError,
-  PageLoading,
-} from "@/components/app/page-state";
+import { EmptyProjects, PageError, PageLoading } from "@/components/app/page-state";
 import { GanttBoard } from "@/components/gantt/gantt-board";
 import { Badge } from "@/components/ui/badge";
 import { useCurrentProject } from "@/data/current-project";
@@ -39,7 +35,9 @@ export default function GanttPage() {
           <span className="text-ink-faint">·</span>
           {project.data.name}
           {project.data.phase ? (
-            <Badge tone="neutral" size="sm">{project.data.phase}</Badge>
+            <Badge tone="neutral" size="sm">
+              {project.data.phase}
+            </Badge>
           ) : null}
         </h1>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-ink-muted">

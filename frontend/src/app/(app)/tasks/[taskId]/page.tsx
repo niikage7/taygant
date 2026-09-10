@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  Check,
-  ChevronRight,
-  History,
-  Maximize2,
-  MessageSquare,
-  PlugZap,
-  Waypoints,
-  X,
-} from "lucide-react";
+import { Check, ChevronRight, History, Maximize2, MessageSquare, Waypoints, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { use } from "react";
@@ -17,6 +8,7 @@ import { use } from "react";
 import { PageError, PageLoading } from "@/components/app/page-state";
 import { DependencyGraph } from "@/components/task/dependency-graph";
 import { ShareTaskButton } from "@/components/task/share-task-button";
+import { ShiftSimulator } from "@/components/task/shift-simulator";
 import { TaskComments } from "@/components/task/task-comments";
 import { TaskHistory } from "@/components/task/task-history";
 import { TaskParams } from "@/components/task/task-params";
@@ -202,22 +194,7 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
                 projectTasks={projectTasks.data ?? []}
               />
 
-              <Card>
-                <CardBody className="flex items-start gap-3 py-4">
-                  <PlugZap className="mt-0.5 size-4 shrink-0 text-warning" />
-                  <p className="text-[13px] text-ink-muted">
-                    <span className="font-semibold text-ink">
-                      Симулятор каскадного сдвига сроков появится здесь
-                    </span>{" "}
-                    после реализации{" "}
-                    <code className="font-mono">/tasks/{"{id}"}/simulate-shift</code> и{" "}
-                    <code className="font-mono">/apply-shift</code> — сейчас эти эндпоинты
-                    возвращают 501. Вёрстка каскадной диаграммы готова (
-                    <code className="font-mono">components/task/cascade-simulation.tsx</code>) и
-                    подключится без изменений экрана.
-                  </p>
-                </CardBody>
-              </Card>
+              <ShiftSimulator taskId={taskId} projectTasks={projectTasks.data ?? []} />
             </>
           ) : null}
         </div>

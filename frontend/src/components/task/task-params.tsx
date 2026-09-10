@@ -1,16 +1,22 @@
 "use client";
 
-import { Building2, Repeat2 } from "lucide-react";
+import { Building2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { Select } from "@/components/ui/select";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useToggleChecklistItem } from "@/data/queries";
+import {
+  useAddChecklistItem,
+  useDeleteChecklistItem,
+  useProjectMembers,
+  useToggleChecklistItem,
+} from "@/data/queries";
 import { formatSigned } from "@/lib/format";
 import { TASK_STATUS_META } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
@@ -37,8 +43,14 @@ export function TaskParams({
   const [startDate, setStartDate] = useState(task.startDate);
   const [endDate, setEndDate] = useState(task.endDate);
   const [description, setDescription] = useState(task.description ?? "");
+  const [title, setTitle] = useState(task.title);
+  const [assigneeId, setAssigneeId] = useState(task.assignee?.id ?? "");
+  const [newCriterion, setNewCriterion] = useState("");
 
+  const members = useProjectMembers(project.id);
   const toggleChecklistItem = useToggleChecklistItem(task.id);
+  const addChecklistItem = useAddChecklistItem(task.id);
+  const deleteChecklistItem = useDeleteChecklistItem(task.id);
 
   // Сервер — источник истины: после сохранения приходит обновлённая задача,
   // и локальные поля надо подтянуть, иначе они «залипнут» на старых значениях.
@@ -48,6 +60,8 @@ export function TaskParams({
     setStartDate(task.startDate);
     setEndDate(task.endDate);
     setDescription(task.description ?? "");
+    setTitle(task.title);
+    setAssigneeId(task.assignee?.id ?? "");
   }, [task]);
 
   useEffect(() => {
@@ -57,8 +71,10 @@ export function TaskParams({
     if (startDate !== task.startDate) draft.startDate = startDate;
     if (endDate !== task.endDate) draft.endDate = endDate;
     if (description !== (task.description ?? "")) draft.description = description;
+    if (title.trim() && title !== task.title) draft.title = title.trim();
+    if (assigneeId !== (task.assignee?.id ?? "")) draft.assigneeId = assigneeId || null;
     onDraftChange(Object.keys(draft).length > 0 ? draft : null);
-  }, [progress, status, startDate, endDate, description, task, onDraftChange]);
+  }, [progress, status, startDate, endDate, description, title, assigneeId, task, onDraftChange]);
 
   const deviation = progress - plannedProgressPercent;
   const doneCount = task.checklist.filter((item) => item.isDone).length;
@@ -72,6 +88,20 @@ export function TaskParams({
 
       <CardBody className="space-y-5">
         <div>
+          <label htmlFor="task-title" className={SECTION}>
+            Название задачи
+          </label>
+          <Textarea
+            id="task-title"
+            rows={2}
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            className="mt-2 font-semibold"
+            invalid={title.trim().length === 0}
+          />
+        </div>
+
+        <div>
           <p className={SECTION}>Проект</p>
           <div className="mt-2 flex items-center justify-between gap-3 rounded-control bg-surface-muted px-3 py-2.5">
             <span className="flex min-w-0 items-center gap-2">
@@ -83,23 +113,29 @@ export function TaskParams({
         </div>
 
         <div>
-          <p className={SECTION}>Ответственный</p>
-          <div className="mt-2 flex items-center justify-between gap-3 rounded-control bg-surface-muted px-3 py-2.5">
-            <span className="flex min-w-0 items-center gap-2.5">
-              <Avatar
-                fullName={task.assignee?.fullName ?? "—"}
-                className="size-9 rounded-full text-xs"
-              />
-              <span className="min-w-0">
-                <span className="block truncate text-[13px] font-semibold text-ink">
-                  {task.assignee?.fullName}
-                </span>
-                <span className="block truncate text-xs text-ink-faint">
-                  {task.assignee?.position}
-                </span>
-              </span>
-            </span>
-            <Repeat2 className="size-4 shrink-0 text-ink-faint" />
+          <label htmlFor="task-assignee" className={SECTION}>
+            Ответственный
+          </label>
+          <div className="mt-2 flex items-center gap-2.5">
+            <Avatar
+              fullName={
+                members.data?.find((member) => member.user.id === assigneeId)?.user.fullName ?? "—"
+              }
+              className="size-9 shrink-0 rounded-full text-xs"
+            />
+            <Select
+              id="task-assignee"
+              value={assigneeId}
+              onChange={(event) => setAssigneeId(event.target.value)}
+            >
+              <option value="">Не назначен</option>
+              {(members.data ?? []).map((member) => (
+                <option key={member.user.id} value={member.user.id}>
+                  {member.user.fullName}
+                  {member.user.position ? ` — ${member.user.position}` : ""}
+                </option>
+              ))}
+            </Select>
           </div>
         </div>
 
@@ -235,16 +271,56 @@ export function TaskParams({
                   />
                   <span
                     className={cn(
-                      "text-[13px] leading-snug",
+                      "min-w-0 flex-1 text-[13px] leading-snug",
                       item.isDone ? "text-ink-faint line-through" : "text-ink",
                     )}
                   >
                     {item.text}
                   </span>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      // Кнопка лежит внутри <label>, иначе клик переключил бы галочку.
+                      event.preventDefault();
+                      deleteChecklistItem.mutate(item.id);
+                    }}
+                    disabled={deleteChecklistItem.isPending}
+                    aria-label={`Удалить критерий «${item.text}»`}
+                    className="shrink-0 rounded-control p-0.5 text-ink-faint transition-colors hover:text-danger focus-visible:focus-ring disabled:opacity-50"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
                 </label>
               </li>
             ))}
           </ul>
+
+          <form
+            className="mt-2 flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const text = newCriterion.trim();
+              if (!text) return;
+              addChecklistItem.mutate(text, { onSuccess: () => setNewCriterion("") });
+            }}
+          >
+            <Input
+              value={newCriterion}
+              onChange={(event) => setNewCriterion(event.target.value)}
+              placeholder="Новый критерий приёмки"
+              aria-label="Новый критерий приёмки"
+              className="h-8"
+            />
+            <Button
+              type="submit"
+              variant="secondary"
+              size="sm"
+              disabled={!newCriterion.trim() || addChecklistItem.isPending}
+            >
+              <Plus />
+              Добавить
+            </Button>
+          </form>
         </div>
       </CardBody>
     </Card>

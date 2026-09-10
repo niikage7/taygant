@@ -2,51 +2,39 @@
 
 import { PlugZap } from "lucide-react";
 
-import {
-  EmptyProjects,
-  PageError,
-  PageLoading,
-} from "@/components/app/page-state";
+import { EmptyProjects, PageError, PageLoading } from "@/components/app/page-state";
 import { AttentionTasks } from "@/components/dashboard/attention-tasks";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { MilestonesStrip } from "@/components/dashboard/milestones-strip";
+import { RiskCard } from "@/components/dashboard/risk-card";
+import { WorkloadCard } from "@/components/dashboard/workload-card";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody } from "@/components/ui/card";
 import { useCurrentProject } from "@/data/current-project";
-import {
-  useMilestones,
-  useProject,
-  useTasks,
-} from "@/data/queries";
-import { buildDashboardMetrics } from "@/lib/dashboard-metrics";
+import { useDashboard, useProject } from "@/data/queries";
 
 /**
- * Обзор и аналитика.
+ * Обзор и аналитика — данные из `GET /projects/{id}/dashboard`.
  *
- * Эндпоинт `/projects/{id}/dashboard` пока возвращает 501, поэтому показатели
- * считаются на клиенте из задач, вех и карточки проекта — все три источника
- * реализованы. Блоки, у которых источника нет вовсе (риски, скорость команды,
- * загрузка в часах), не заполняются выдуманными числами, а честно помечены
- * как ожидающие бэкенд.
+ * Два поля ответа бэкенд заполнить не может и честно об этом пишет:
+ * `progressDeltaPercent` всегда 0 (нет исторических снимков прогресса) и
+ * `teamWorkload` всегда пуст (в задачах нет оценки часов, а `/workload`
+ * возвращает 501). Поэтому дельту не показываем вовсе, а карточку загрузки —
+ * только когда список непустой.
  */
 export default function OverviewPage() {
   const { projectId, isEmpty, error } = useCurrentProject();
   const project = useProject(projectId);
-  const tasks = useTasks(projectId);
-  const milestones = useMilestones(projectId);
+  const dashboard = useDashboard(projectId);
 
   if (error) return <PageError error={error} />;
   if (isEmpty) return <EmptyProjects />;
   if (project.error) return <PageError error={project.error} />;
-  if (tasks.error) return <PageError error={tasks.error} />;
-  if (!project.data || !tasks.data) return <PageLoading />;
+  if (dashboard.error) return <PageError error={dashboard.error} />;
+  if (!project.data || !dashboard.data) return <PageLoading />;
 
-  const metrics = buildDashboardMetrics({
-    project: project.data,
-    tasks: tasks.data,
-    milestones: milestones.data ?? [],
-    today: new Date(),
-  });
+  const data = dashboard.data;
+  const hasWorkload = data.teamWorkload.length > 0;
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-4">
@@ -66,27 +54,37 @@ export default function OverviewPage() {
         </h1>
       </div>
 
-      <KpiCards metrics={metrics} project={project.data} />
+      <KpiCards data={data} project={project.data} />
 
-      {milestones.data && milestones.data.length > 0 ? (
-        <MilestonesStrip milestones={milestones.data} />
+      {data.nearestMilestones.length > 0 ? (
+        <MilestonesStrip milestones={data.nearestMilestones} />
       ) : null}
 
-      <AttentionTasks tasks={metrics.laggingTasks} />
+      <div className={hasWorkload ? "grid gap-4 lg:grid-cols-[1.4fr_1fr]" : "space-y-4"}>
+        <div className="space-y-4">
+          {data.risks.map((risk) => (
+            <RiskCard key={risk.title} risk={risk} />
+          ))}
+          <AttentionTasks tasks={data.attentionTasks} />
+        </div>
+        {hasWorkload ? <WorkloadCard workload={data.teamWorkload} /> : null}
+      </div>
 
-      <Card>
-        <CardBody className="flex items-start gap-3 py-4">
-          <PlugZap className="mt-0.5 size-4 shrink-0 text-warning" />
-          <p className="text-[13px] text-ink-muted">
-            <span className="font-semibold text-ink">
-              Риски, скорость команды и загрузка по часам появятся здесь
-            </span>{" "}
-            после реализации <code className="font-mono">/projects/{"{id}"}/dashboard</code>{" "}
-            и <code className="font-mono">/workload</code> — сейчас эти эндпоинты
-            возвращают 501. Вёрстка блоков готова и подключится без изменений экрана.
-          </p>
-        </CardBody>
-      </Card>
+      {!hasWorkload ? (
+        <Card>
+          <CardBody className="flex items-start gap-3 py-4">
+            <PlugZap className="mt-0.5 size-4 shrink-0 text-warning" />
+            <p className="text-[13px] text-ink-muted">
+              <span className="font-semibold text-ink">
+                Загрузка команды по часам появится здесь
+              </span>{" "}
+              после реализации <code className="font-mono">/projects/{"{id}"}/workload</code>:
+              сейчас эндпоинт возвращает 501, а в задачах нет оценки трудозатрат, поэтому бэкенд
+              отдаёт пустой список. Вёрстка карточки готова.
+            </p>
+          </CardBody>
+        </Card>
+      ) : null}
     </div>
   );
 }

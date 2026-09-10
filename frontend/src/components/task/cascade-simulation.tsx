@@ -1,8 +1,10 @@
 /**
- * Каскадная диаграмма what-if.
+ * Каскадная диаграмма what-if: как сдвиг исходной задачи пробегает по цепочке
+ * связей и во что превращается для дедлайна проекта.
  *
- * ⚠️ Пока не подключён: данные приходят из `POST /tasks/{id}/simulate-shift`
- * и `/apply-shift`, оба возвращают 501. Компонент готов и ждёт эндпоинты.
+ * Расчёт делает бэкенд (`POST /tasks/{id}/simulate-shift`), применение —
+ * `/apply-shift`. Сценарий не пересчитывается сам: это запрос по кнопке, иначе
+ * пользователь видел бы, как цифры меняются без его действий.
  */
 "use client";
 
@@ -21,10 +23,16 @@ import type { ShiftSimulation } from "@/types";
 export function CascadeSimulation({
   simulation,
   affectedNumbers,
+  onCancel,
+  onApply,
+  isApplying,
 }: {
   simulation: ShiftSimulation;
   /** Номера задач для текста уведомления — берутся из WBS, а не из id. */
   affectedNumbers: string[];
+  onCancel: () => void;
+  onApply: (compensateFromBuffer: boolean) => void;
+  isApplying: boolean;
 }) {
   const impact = simulation.projectDeadlineImpact;
 
@@ -109,14 +117,25 @@ export function CascadeSimulation({
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost">Отмена</Button>
-          <Button variant="soft">
+          <Button variant="ghost" onClick={onCancel} disabled={isApplying}>
+            Отмена
+          </Button>
+          <Button
+            variant="soft"
+            onClick={() => onApply(true)}
+            disabled={isApplying || simulation.bufferAvailableDays <= 0}
+            title={
+              simulation.bufferAvailableDays <= 0
+                ? "Резерва нет — компенсировать сдвиг нечем"
+                : undefined
+            }
+          >
             <Shield />
             Компенсировать из резерва
           </Button>
-          <Button variant="danger">
+          <Button variant="danger" onClick={() => onApply(false)} disabled={isApplying}>
             <Zap />
-            Применить сдвиг цепочки (+{simulation.shiftDays}д)
+            {isApplying ? "Применяем…" : `Применить сдвиг цепочки (+${simulation.shiftDays}д)`}
           </Button>
         </div>
       </CardBody>

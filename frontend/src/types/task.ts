@@ -121,8 +121,12 @@ export interface TaskUpdateRequest {
   title?: string;
   /** Новое описание задачи. */
   description?: string;
-  /** Идентификатор нового ответственного. */
-  assigneeId?: string;
+  /**
+   * Идентификатор нового ответственного.
+   * `null` снимает ответственного, отсутствие поля оставляет прежнего —
+   * на бэкенде это `*uuid.UUID` (см. `taskUpdateRequest` в `tasks.go`).
+   */
+  assigneeId?: string | null;
   /** Новый статус задачи. */
   status?: TaskStatus;
   /** Новая дата начала задачи. */
