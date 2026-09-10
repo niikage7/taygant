@@ -16,10 +16,28 @@ import { toUserMessage } from "@/lib/api-error-message";
 import { startSession } from "@/lib/session";
 import { authService } from "@/services";
 
+/**
+ * Правила пароля повторяют `auth.ValidatePassword` на бэкенде
+ * (`backend/internal/auth/password.go`): длина 8+, не больше 72 байт — это предел
+ * bcrypt, — и минимум одна буква с одной цифрой. Дублируем их на клиенте, чтобы
+ * пользователь видел ошибку сразу, а не после ответа сервера.
+ */
+const MAX_PASSWORD_BYTES = 72;
+
 const registerSchema = z.object({
   email: z.email("Введите корректный адрес почты"),
   fullName: z.string().trim().min(2, "Укажите имя и фамилию").max(120, "Не более 120 знаков"),
-  password: z.string().min(8, "Пароль должен быть не короче 8 знаков"),
+  password: z
+    .string()
+    .min(8, "Пароль должен быть не короче 8 знаков")
+    .refine(
+      (value) => new TextEncoder().encode(value).length <= MAX_PASSWORD_BYTES,
+      "Пароль слишком длинный",
+    )
+    .refine(
+      (value) => /\p{L}/u.test(value) && /\p{Nd}/u.test(value),
+      "Пароль должен содержать хотя бы одну букву и одну цифру",
+    ),
 });
 
 type RegisterValues = z.infer<typeof registerSchema>;
@@ -50,8 +68,6 @@ export function RegisterForm() {
           error,
           {
             409: "Пользователь с такой почтой уже зарегистрирован",
-            404: "Регистрация пока не подключена на сервере",
-            501: "Регистрация пока не подключена на сервере",
           },
           "Не удалось зарегистрироваться. Попробуйте ещё раз",
         ),

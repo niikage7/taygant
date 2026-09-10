@@ -80,4 +80,8 @@ Standard Next.js App Router under `src/app/` (currently just the root `layout.ts
 
 `src/app/(auth)/` — группа с общей оболочкой (фон #F8F9FF с размытыми пятнами, карточка 420px, копирайт): `/login` и `/register`.
 
-⚠️ `POST /auth/register` **отсутствует** в `backend/api-spec.yml` и в Go-хендлерах. Форма регистрации сделана по макету, `authService.register` бьёт в `/auth/register` и до появления эндпоинта показывает пользователю ошибку. Ссылки `/forgot-password` и `/terms` — заглушки, страниц пока нет.
+⚠️ `POST /auth/register` **намеренно отсутствует в `api-spec.yml`**, но реализован сверх спецификации — сверяться нужно с `backend/internal/api/auth.go` (тело: `email`, `password`, `fullName`, `department`, `position`; ответ 201; 400 — данные, 409 — email занят).
+
+Правила пароля продублированы на клиенте в `register-form.tsx` и обязаны совпадать с `auth.ValidatePassword` (`backend/internal/auth/password.go`): 8+ символов, не длиннее 72 байт, минимум одна буква и одна цифра. При изменении правил на бэкенде править и схему zod.
+
+Ссылки `/forgot-password` и `/terms` — заглушки, страниц пока нет.
