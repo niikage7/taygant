@@ -7,71 +7,61 @@ import { useState, type ReactNode } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useCreateDependency } from "@/data/queries";
+import { useAssignTasksToMilestone } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
 import { plural } from "@/lib/format";
 import type { Task } from "@/types";
 
 /**
- * Массовая привязка задач к вехе.
+ * Массовая привязка задач к вехе через `milestoneId`.
  *
- * Привязки «задача → веха» в модели нет, принадлежность выражается связями
- * (см. docs/backend-request-milestones.md). Раньше каждую связь приходилось
- * создавать отдельной модалкой — здесь отмечаются сразу все нужные задачи.
- *
- * Запросы уходят по одному: эндпоинт принимает одну связь за раз. Ошибки
- * собираются и показываются списком, успешные связи при этом остаются —
- * откатывать уже созданное было бы хуже, чем сообщить о частичном результате.
+ * Отдельного эндпоинта нет, поэтому каждой задаче поле проставляется своим
+ * PATCH. Ошибки собираются и показываются списком, а успешные привязки
+ * остаются: откатывать их хуже, чем сообщить о частичном результате.
  */
 export function LinkTasksDialog({
-  taskId,
+  milestoneTaskId,
   candidates,
-  linkedTaskIds,
   trigger,
 }: {
-  taskId: string;
+  /** Задача-веха, к которой привязываются работы. */
+  milestoneTaskId: string;
   candidates: Task[];
-  linkedTaskIds: string[];
   trigger: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
-  const [lagDays, setLagDays] = useState(0);
   const [failed, setFailed] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
 
-  const createDependency = useCreateDependency(taskId);
-  const linked = new Set([...linkedTaskIds, taskId]);
-  const available = candidates.filter((task) => !linked.has(task.id));
+  const assignTasks = useAssignTasksToMilestone();
+  // Уже привязанные к этой вехе показываем отмеченными, чужие вехи не трогаем.
+  const available = candidates.filter(
+    (task) =>
+      task.id !== milestoneTaskId &&
+      !task.isMilestone &&
+      (!task.milestoneId || task.milestoneId === milestoneTaskId),
+  );
 
-  async function submit() {
-    setBusy(true);
+  function submit() {
     setFailed([]);
-    const errors: string[] = [];
-
-    for (const id of selected) {
-      try {
-        await createDependency.mutateAsync({
-          relatedTaskId: id,
-          direction: "predecessor",
-          type: "FS",
-          lagDays,
-        });
-      } catch (error) {
-        const title = candidates.find((task) => task.id === id)?.title ?? id;
-        errors.push(`${title}: ${toUserMessage(error, {}, "не удалось связать")}`);
-      }
-    }
-
-    setBusy(false);
-    if (errors.length > 0) {
-      setFailed(errors);
-      return;
-    }
-    setSelected([]);
-    setOpen(false);
+    assignTasks.mutate(
+      { taskIds: selected, milestoneId: milestoneTaskId },
+      {
+        onSuccess: (errors) => {
+          if (errors.length > 0) {
+            setFailed(
+              errors.map(({ taskId, error }) => {
+                const title = candidates.find((task) => task.id === taskId)?.title ?? taskId;
+                return `${title}: ${toUserMessage(error, {}, "не удалось привязать")}`;
+              }),
+            );
+            return;
+          }
+          setSelected([]);
+          setOpen(false);
+        },
+      },
+    );
   }
 
   return (
@@ -96,8 +86,8 @@ export function LinkTasksDialog({
                 Привязать задачи к вехе
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-[13px] text-ink-muted">
-                Отметьте работы, завершение которых означает достижение вехи.
-                Связи создаются типом FS — веха наступает после их окончания.
+                Отметьте работы, которые ведут к этой вехе. Прогресс вехи
+                считается по ним.
               </Dialog.Description>
             </div>
             <Dialog.Close
@@ -137,20 +127,10 @@ export function LinkTasksDialog({
                 ))}
               </ul>
 
-              <div className="flex items-end justify-between gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="link-lag">Лаг, дней</Label>
-                  <Input
-                    id="link-lag"
-                    type="number"
-                    value={lagDays}
-                    onChange={(event) => setLagDays(Number(event.target.value))}
-                    className="w-28"
-                  />
-                </div>
+              <div className="flex items-center justify-end gap-3">
                 <span className="text-xs text-ink-faint">
                   {selected.length > 0
-                    ? `Будет создано ${selected.length} ${plural(selected.length, ["связь", "связи", "связей"])}`
+                    ? `Будет привязано ${selected.length} ${plural(selected.length, ["задача", "задачи", "задач"])}`
                     : "Ничего не выбрано"}
                 </span>
               </div>
@@ -172,9 +152,12 @@ export function LinkTasksDialog({
                     Отмена
                   </Button>
                 </Dialog.Close>
-                <Button onClick={submit} disabled={selected.length === 0 || busy}>
+                <Button
+                  onClick={submit}
+                  disabled={selected.length === 0 || assignTasks.isPending}
+                >
                   <Link2 />
-                  {busy ? "Связываем…" : "Привязать"}
+                  {assignTasks.isPending ? "Привязываем…" : "Привязать"}
                 </Button>
               </div>
             </div>

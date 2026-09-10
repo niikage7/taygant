@@ -18,6 +18,10 @@ export interface Milestone {
   status: MilestoneStatus;
   /** Прогнозируемое отставание от плановой даты, дней. */
   riskDays: number | null;
+  /** Сколько задач ведёт к вехе. */
+  tasksTotal: number;
+  /** Сколько из них завершено. */
+  tasksDone: number;
 }
 
 /** Данные для создания или изменения контрольной точки. */
@@ -28,4 +32,10 @@ export interface MilestoneCreateRequest {
   name: string;
   /** Плановая дата достижения контрольной точки. */
   plannedDate: string;
+  /**
+   * Фактическая дата достижения — только для обновления.
+   * Поле не передано — не менять, `null` — снять отметку о достижении.
+   * Статус `done` выводится сервером именно из неё.
+   */
+  actualDate?: string | null;
 }

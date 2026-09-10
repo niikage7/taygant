@@ -13,6 +13,8 @@ export interface Task {
   sprintId: string | null;
   /** Идентификатор родительской задачи для построения иерархии WBS (подзадачи). */
   parentTaskId: string | null;
+  /** Контрольная точка, к которой ведёт задача; null — задача вне вех. */
+  milestoneId: string | null;
   /** Короткий читаемый код задачи. */
   code: string;
   /** Номер задачи в иерархической структуре работ (WBS). */
@@ -93,6 +95,8 @@ export interface TaskCreateRequest {
   sprintId?: string;
   /** Идентификатор родительской задачи (для создания подзадачи в WBS). */
   parentTaskId?: string;
+  /** Контрольная точка, к которой ведёт задача. */
+  milestoneId?: string;
   /** Название задачи. */
   title: string;
   /** Описание задачи. */
@@ -137,6 +141,12 @@ export interface TaskUpdateRequest {
   progressPercent?: number;
   /** Новый вес задачи в общем прогрессе проекта, %. */
   weightPercent?: number;
+  /**
+   * Контрольная точка задачи.
+   * Поле не передано — не менять, `null` — отвязать от вехи
+   * (на бэкенде это различают `MilestoneID` + `MilestoneIDSet`).
+   */
+  milestoneId?: string | null;
 }
 
 /** Параметры фильтрации списка задач проекта. */

@@ -13,19 +13,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useCreateTask, useProjectMembers } from "@/data/queries";
+import {
+  useAssignTasksToMilestone,
+  useCreateTask,
+  useProjectMembers,
+} from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
 import { cn } from "@/lib/utils";
-import type { DependencyType, Task } from "@/types";
+import type { Task } from "@/types";
 
 const toIso = (date: Date) => format(date, "yyyy-MM-dd");
 
-const TYPE_OPTIONS: { value: DependencyType; label: string }[] = [
-  { value: "FS", label: "FS — окончание к началу" },
-  { value: "SS", label: "SS — начало к началу" },
-  { value: "FF", label: "FF — окончание к окончанию" },
-  { value: "SF", label: "SF — начало к окончанию" },
-];
 
 /**
  * Создание задачи проекта.
@@ -50,11 +48,15 @@ export function CreateTaskDialog({
   const [startDate, setStartDate] = useState(() => toIso(new Date()));
   const [endDate, setEndDate] = useState(() => toIso(addDays(new Date(), 5)));
   const [isMilestone, setIsMilestone] = useState(false);
-  const [predecessorIds, setPredecessorIds] = useState<string[]>([]);
-  const [dependencyType, setDependencyType] = useState<DependencyType>("FS");
+  const [milestoneId, setMilestoneId] = useState("");
+  const [linkedTaskIds, setLinkedTaskIds] = useState<string[]>([]);
 
   const members = useProjectMembers(projectId);
   const createTask = useCreateTask(projectId);
+  const assignTasks = useAssignTasksToMilestone();
+
+  const milestoneTasks = projectTasks.filter((task) => task.isMilestone);
+  const plainTasks = projectTasks.filter((task) => !task.isMilestone);
 
   const validRange = endDate >= startDate;
   const canSubmit = title.trim().length > 0 && validRange && !createTask.isPending;
@@ -63,7 +65,8 @@ export function CreateTaskDialog({
     setTitle("");
     setDescription("");
     setAssigneeId("");
-    setPredecessorIds([]);
+    setMilestoneId("");
+    setLinkedTaskIds([]);
   }
 
   function submit() {
@@ -77,19 +80,15 @@ export function CreateTaskDialog({
         // У вехи нулевая длительность — конец совпадает с началом.
         endDate: isMilestone ? startDate : endDate,
         isMilestone,
-        // Бэкенд принимает связи массивом, поэтому веху можно сразу привязать
-        // ко всем задачам, которые к ней ведут, а не создавать связи по одной.
-        predecessors:
-          predecessorIds.length > 0
-            ? predecessorIds.map((taskId) => ({
-                taskId,
-                type: dependencyType,
-                lagDays: 0,
-              }))
-            : undefined,
+        milestoneId: !isMilestone && milestoneId ? milestoneId : undefined,
       },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
+          // Веху привязываем к задачам после создания: milestoneId проставляется
+          // самим задачам, а до создания вехи её идентификатора ещё нет.
+          if (isMilestone && linkedTaskIds.length > 0) {
+            assignTasks.mutate({ taskIds: linkedTaskIds, milestoneId: created.id });
+          }
           setOpen(false);
           reset();
         },
@@ -214,67 +213,56 @@ export function CreateTaskDialog({
               ) : null}
             </div>
 
-            {projectTasks.length > 0 ? (
+            {!isMilestone && milestoneTasks.length > 0 ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="task-milestone">Контрольная точка</Label>
+                <Select
+                  id="task-milestone"
+                  value={milestoneId}
+                  onChange={(event) => setMilestoneId(event.target.value)}
+                >
+                  <option value="">Вне вех</option>
+                  {milestoneTasks.map((task) => (
+                    <option key={task.id} value={task.id}>
+                      {task.title}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : null}
+
+            {isMilestone && plainTasks.length > 0 ? (
               <div className="space-y-2">
                 <div className="flex items-baseline justify-between gap-3">
-                  <Label>
-                    {isMilestone
-                      ? "Задачи, ведущие к вехе"
-                      : "Предшественники"}
-                  </Label>
+                  <Label>Задачи, ведущие к вехе</Label>
                   <span className="text-xs text-ink-faint">
-                    {predecessorIds.length > 0
-                      ? `выбрано: ${predecessorIds.length}`
+                    {linkedTaskIds.length > 0
+                      ? `выбрано: ${linkedTaskIds.length}`
                       : "можно несколько"}
                   </span>
                 </div>
-
                 <ul className="max-h-44 space-y-1 overflow-y-auto rounded-control border border-line p-2">
-                  {projectTasks.map((task) => {
-                    const checked = predecessorIds.includes(task.id);
-                    return (
-                      <li key={task.id}>
-                        <label className="flex cursor-pointer items-center gap-2.5 rounded-control px-2 py-1.5 hover:bg-surface-muted">
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(next) =>
-                              setPredecessorIds((current) =>
-                                next === true
-                                  ? [...current, task.id]
-                                  : current.filter((id) => id !== task.id),
-                              )
-                            }
-                          />
-                          <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
-                            <span className="font-mono text-ink-faint">
-                              #{task.wbsNumber}
-                            </span>{" "}
-                            {task.title}
-                          </span>
-                        </label>
-                      </li>
-                    );
-                  })}
+                  {plainTasks.map((task) => (
+                    <li key={task.id}>
+                      <label className="flex cursor-pointer items-center gap-2.5 rounded-control px-2 py-1.5 hover:bg-surface-muted">
+                        <Checkbox
+                          checked={linkedTaskIds.includes(task.id)}
+                          onCheckedChange={(next) =>
+                            setLinkedTaskIds((current) =>
+                              next === true
+                                ? [...current, task.id]
+                                : current.filter((id) => id !== task.id),
+                            )
+                          }
+                        />
+                        <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
+                          <span className="font-mono text-ink-faint">#{task.wbsNumber}</span>{" "}
+                          {task.title}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
                 </ul>
-
-                {predecessorIds.length > 0 ? (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="task-dep-type">Тип связи</Label>
-                    <Select
-                      id="task-dep-type"
-                      value={dependencyType}
-                      onChange={(event) =>
-                        setDependencyType(event.target.value as DependencyType)
-                      }
-                    >
-                      {TYPE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                ) : null}
               </div>
             ) : null}
 

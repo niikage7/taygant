@@ -49,17 +49,6 @@ export function TaskTable({
   );
   const wbsOf = new Map(allTasks.map((task) => [task.id, task.wbsNumber]));
 
-  // Сколько задач ведёт к вехе. Привязки «задача → веха» в модели нет, поэтому
-  // считаем по входящим связям: это единственный способ выразить такую
-  // принадлежность на текущей схеме (см. docs/backend-request-milestones.md).
-  const feedingCount = new Map<string, number>();
-  for (const dependency of dependencies) {
-    feedingCount.set(
-      dependency.successorTaskId,
-      (feedingCount.get(dependency.successorTaskId) ?? 0) + 1,
-    );
-  }
-
   return (
     <div className="w-[600px] shrink-0 border-r border-line">
       <div className="sticky top-0 z-10 flex h-12 items-end border-b border-line bg-surface px-3 pb-2 text-[11px] tracking-wider text-ink-faint uppercase">

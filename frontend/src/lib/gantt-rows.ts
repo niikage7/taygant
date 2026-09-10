@@ -1,4 +1,4 @@
-import type { Task, TaskDependency } from "@/types";
+import type { Task } from "@/types";
 
 /** Строка реестра: задача плюс сведения о её месте в группировке. */
 export type GanttRow = {
@@ -12,51 +12,37 @@ export type GanttRow = {
 /**
  * Раскладывает задачи по вехам для реестра и таймлайна.
  *
- * Поля «задача принадлежит вехе» в модели нет (см.
- * `docs/backend-request-milestones.md`), поэтому принадлежность выводится из
- * связей: задача входит в веху, если она её прямой предшественник. Задача может
- * вести к нескольким вехам — тогда она относится к первой по порядку реестра,
- * иначе одна и та же строка задваивалась бы и ломала соответствие с таймлайном.
+ * Принадлежность берётся из `task.milestoneId` — настоящего поля модели. Раньше
+ * её приходилось выводить из связей, потому что поля не было; эвристика убрана.
+ *
+ * Веха здесь — задача с `isMilestone`. Вехи проекта (`Milestone`) живут отдельно
+ * и на реестр не влияют, они показаны отметками на таймлайне.
  *
  * @param collapsed идентификаторы свёрнутых вех — их дети не попадают в результат
  */
 export function buildGanttRows(
   tasks: Task[],
-  dependencies: TaskDependency[],
   collapsed: ReadonlySet<string>,
 ): GanttRow[] {
   const milestones = tasks.filter((task) => task.isMilestone);
   const milestoneIds = new Set(milestones.map((task) => task.id));
 
-  const predecessorsOf = new Map<string, string[]>();
-  for (const dependency of dependencies) {
-    if (!milestoneIds.has(dependency.successorTaskId)) continue;
-    const list = predecessorsOf.get(dependency.successorTaskId) ?? [];
-    list.push(dependency.predecessorTaskId);
-    predecessorsOf.set(dependency.successorTaskId, list);
-  }
-
-  const taskById = new Map(tasks.map((task) => [task.id, task]));
-  const claimed = new Set<string>();
   const childrenOf = new Map<string, Task[]>();
-
-  for (const milestone of milestones) {
-    const children: Task[] = [];
-    for (const predecessorId of predecessorsOf.get(milestone.id) ?? []) {
-      const child = taskById.get(predecessorId);
-      // Веху, ведущую к другой вехе, не вкладываем: она сама заголовок группы.
-      if (!child || child.isMilestone || claimed.has(child.id)) continue;
-      claimed.add(child.id);
-      children.push(child);
-    }
-    childrenOf.set(milestone.id, children);
+  for (const task of tasks) {
+    // Веху, привязанную к другой вехе, не вкладываем: она сама заголовок группы.
+    if (task.isMilestone || !task.milestoneId) continue;
+    if (!milestoneIds.has(task.milestoneId)) continue;
+    const list = childrenOf.get(task.milestoneId) ?? [];
+    list.push(task);
+    childrenOf.set(task.milestoneId, list);
   }
 
   const rows: GanttRow[] = [];
 
-  // Задачи, не относящиеся ни к одной вехе, идут первыми — в исходном порядке.
+  // Задачи вне вех идут первыми, в исходном порядке.
   for (const task of tasks) {
-    if (task.isMilestone || claimed.has(task.id)) continue;
+    if (task.isMilestone) continue;
+    if (task.milestoneId && milestoneIds.has(task.milestoneId)) continue;
     rows.push({ task, depth: 0, childCount: 0 });
   }
 

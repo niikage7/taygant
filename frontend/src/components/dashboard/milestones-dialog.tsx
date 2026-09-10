@@ -1,7 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { CircleCheck, Flag, Info, Pencil, Plus, Trash2, X } from "lucide-react";
+import { CircleCheck, Flag, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -21,7 +21,7 @@ import { formatDate } from "@/lib/format";
 import { MILESTONE_STATUS_META } from "@/lib/task-status";
 import type { Milestone } from "@/types";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => new Date().toISOString().slice(0, 10);
 
 /**
  * Управление контрольными точками проекта.
@@ -69,18 +69,6 @@ export function MilestonesDialog({
           <div className="mt-5 space-y-4">
             <MilestoneForm projectId={projectId} />
 
-            {/*
-              Статус вычисляется на сервере из actualDate и порядка плановых дат
-              (deriveMilestoneStatuses). Поставить actualDate через API сейчас
-              нельзя, поэтому «Готово» недостижимо — предупреждаем, иначе счётчик
-              закрытых вех в обзоре выглядит сломанным.
-            */}
-            <p className="flex items-start gap-2 rounded-control bg-warning-tint px-3 py-2 text-xs text-warning-ink">
-              <Info className="mt-px size-3.5 shrink-0" />
-              Отметить веху достигнутой пока нельзя: статус выводится из фактической
-              даты, а её приём не реализован на бэкенде. Поэтому в обзоре число
-              закрытых вех остаётся нулевым.
-            </p>
 
             {milestones.isPending ? (
               <p className="py-6 text-center text-[13px] text-ink-muted">
@@ -107,7 +95,7 @@ export function MilestonesDialog({
 function MilestoneForm({ projectId }: { projectId: string }) {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
-  const [plannedDate, setPlannedDate] = useState(today);
+  const [plannedDate, setPlannedDate] = useState(todayIso);
   const createMilestone = useCreateMilestone(projectId);
 
   const canSubmit = name.trim().length > 0 && plannedDate && !createMilestone.isPending;
@@ -124,7 +112,7 @@ function MilestoneForm({ projectId }: { projectId: string }) {
             onSuccess: () => {
               setCode("");
               setName("");
-              setPlannedDate(today());
+              setPlannedDate(todayIso());
             },
           },
         );
@@ -201,6 +189,8 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
             updateMilestone.mutate(
               {
                 milestoneId: milestone.id,
+                // actualDate намеренно не передаём: «не передано» на бэкенде
+                // означает «не менять», иначе правка названия сняла бы отметку.
                 payload: { code: milestone.code, name: name.trim(), plannedDate },
               },
               { onSuccess: () => setEditing(false) },
@@ -258,13 +248,57 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
         </p>
         <p className="mt-0.5 font-mono text-[11px] text-ink-faint">
           {formatDate(milestone.plannedDate)}
-          {milestone.riskDays ? ` · риск +${milestone.riskDays} дн.` : ""}
+          {milestone.actualDate
+            ? ` · достигнута ${formatDate(milestone.actualDate)}`
+            : milestone.riskDays
+              ? ` · риск +${milestone.riskDays} дн.`
+              : ""}
         </p>
       </div>
+
+      {milestone.tasksTotal > 0 ? (
+        <span className="shrink-0 font-mono text-[11px] text-ink-faint">
+          {milestone.tasksDone}/{milestone.tasksTotal}
+        </span>
+      ) : null}
 
       <Badge tone={status.tone} size="sm">
         {status.label}
       </Badge>
+
+      {/*
+        Статус выводится сервером из actualDate, отдельного поля «статус» в
+        запросе нет — поэтому «достигнута» это простановка фактической даты,
+        а снятие отметки — явный null.
+      */}
+      <button
+        type="button"
+        onClick={() =>
+          updateMilestone.mutate({
+            milestoneId: milestone.id,
+            payload: {
+              code: milestone.code,
+              name: milestone.name,
+              plannedDate: milestone.plannedDate,
+              actualDate: milestone.actualDate ? null : todayIso(),
+            },
+          })
+        }
+        disabled={updateMilestone.isPending}
+        aria-label={
+          milestone.actualDate
+            ? `Снять отметку достижения с «${milestone.name}»`
+            : `Отметить «${milestone.name}» достигнутой`
+        }
+        title={milestone.actualDate ? "Снять отметку достижения" : "Отметить достигнутой"}
+        className="rounded-control p-1 text-ink-faint transition-colors hover:text-success focus-visible:focus-ring disabled:opacity-50"
+      >
+        {milestone.actualDate ? (
+          <RotateCcw className="size-3.5" />
+        ) : (
+          <CircleCheck className="size-3.5" />
+        )}
+      </button>
 
       <button
         type="button"

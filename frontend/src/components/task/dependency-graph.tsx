@@ -1,11 +1,9 @@
 "use client";
 
-import { ArrowLeftToLine, ArrowRightFromLine, Link2, Trash2 } from "lucide-react";
+import { ArrowLeftToLine, ArrowRightFromLine, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import { AddDependencyDialog } from "@/components/task/add-dependency-dialog";
-import { LinkTasksDialog } from "@/components/task/link-tasks-dialog";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDeleteDependency } from "@/data/queries";
@@ -53,28 +51,11 @@ export function DependencyGraph({
             Определяет динамический расчёт сроков по алгоритму Critical Path Method (CPM)
           </p>
         </div>
-        <span className="flex items-center gap-2">
-          {/* У вехи привязка задач — основной сценарий, поэтому отдельная
-              кнопка с множественным выбором вместо связи по одной. */}
-          {isMilestone ? (
-            <LinkTasksDialog
-              taskId={taskId}
-              candidates={projectTasks.filter((task) => !task.isMilestone)}
-              linkedTaskIds={linkedTaskIds}
-              trigger={
-                <Button size="sm">
-                  <Link2 />
-                  Привязать задачи
-                </Button>
-              }
-            />
-          ) : null}
-          <AddDependencyDialog
-            taskId={taskId}
-            candidates={projectTasks}
-            linkedTaskIds={linkedTaskIds}
-          />
-        </span>
+        <AddDependencyDialog
+          taskId={taskId}
+          candidates={projectTasks}
+          linkedTaskIds={linkedTaskIds}
+        />
       </CardHeader>
 
       <CardBody>

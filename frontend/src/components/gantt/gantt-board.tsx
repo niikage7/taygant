@@ -67,7 +67,7 @@ export function GanttBoard({
 
   // Порядок строк считаем один раз: реестр и таймлайн обязаны совпадать
   // построчно, иначе отрезки уедут относительно названий.
-  const rows = buildGanttRows(visibleTasks, dependencies, collapsed);
+  const rows = buildGanttRows(visibleTasks, collapsed);
   const visibleInOrder = rows.map((row) => row.task);
 
   const criticalTask = tasks.find(

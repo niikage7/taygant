@@ -7,6 +7,7 @@ import { use } from "react";
 
 import { PageError, PageLoading } from "@/components/app/page-state";
 import { DependencyGraph } from "@/components/task/dependency-graph";
+import { MilestoneTasksCard } from "@/components/task/milestone-tasks-card";
 import { ShareTaskButton } from "@/components/task/share-task-button";
 import { ShiftSimulator } from "@/components/task/shift-simulator";
 import { TaskComments } from "@/components/task/task-comments";
@@ -186,6 +187,12 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
 
           {tab === "links" ? (
             <>
+              {detail.isMilestone ? (
+                <MilestoneTasksCard
+                  milestoneTaskId={taskId}
+                  projectTasks={projectTasks.data ?? []}
+                />
+              ) : null}
               <DependencyGraph
                 taskId={taskId}
                 taskNumber={detail.wbsNumber ?? ""}

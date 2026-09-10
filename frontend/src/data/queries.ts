@@ -149,6 +149,37 @@ export function useUpdateTask(taskId: string) {
   });
 }
 
+/**
+ * Массовая привязка задач к вехе.
+ *
+ * Отдельного эндпоинта для этого нет — каждой задаче проставляется `milestoneId`
+ * через PATCH. Запросы идут параллельно; результат сообщает, что не прошло,
+ * а успешные привязки остаются: откатывать их хуже, чем показать частичный
+ * результат.
+ */
+export function useAssignTasksToMilestone() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      taskIds,
+      milestoneId,
+    }: {
+      taskIds: string[];
+      milestoneId: string | null;
+    }) => {
+      const results = await Promise.allSettled(
+        taskIds.map((taskId) => tasksService.update(taskId, { milestoneId })),
+      );
+      return results.flatMap((result, index) =>
+        result.status === "rejected"
+          ? [{ taskId: taskIds[index], error: result.reason as unknown }]
+          : [],
+      );
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
 export function useAddComment(taskId: string) {
   const queryClient = useQueryClient();
   return useMutation({
