@@ -1,7 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { CircleCheck, Flag, Pencil, Plus, Trash2, X } from "lucide-react";
+import { CircleCheck, Flag, Info, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -54,7 +54,8 @@ export function MilestonesDialog({
                 Контрольные точки проекта
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-[13px] text-ink-muted">
-                Ключевые события с плановой датой. Статус и риск отставания считает сервер.
+                Обязательства проекта по датам. Задачи к ним не привязываются — для
+                этого используйте спринты или задачу-веху со связями.
               </Dialog.Description>
             </div>
             <Dialog.Close
@@ -67,6 +68,19 @@ export function MilestonesDialog({
 
           <div className="mt-5 space-y-4">
             <MilestoneForm projectId={projectId} />
+
+            {/*
+              Статус вычисляется на сервере из actualDate и порядка плановых дат
+              (deriveMilestoneStatuses). Поставить actualDate через API сейчас
+              нельзя, поэтому «Готово» недостижимо — предупреждаем, иначе счётчик
+              закрытых вех в обзоре выглядит сломанным.
+            */}
+            <p className="flex items-start gap-2 rounded-control bg-warning-tint px-3 py-2 text-xs text-warning-ink">
+              <Info className="mt-px size-3.5 shrink-0" />
+              Отметить веху достигнутой пока нельзя: статус выводится из фактической
+              даты, а её приём не реализован на бэкенде. Поэтому в обзоре число
+              закрытых вех остаётся нулевым.
+            </p>
 
             {milestones.isPending ? (
               <p className="py-6 text-center text-[13px] text-ink-muted">

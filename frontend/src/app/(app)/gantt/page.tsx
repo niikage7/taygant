@@ -24,7 +24,7 @@ export default function GanttPage() {
   if (!project.data || !gantt.data) return <PageLoading />;
 
   const currentUser = getStoredUser();
-  const { tasks, dependencies } = gantt.data;
+  const { tasks, dependencies, milestones } = gantt.data;
   const criticalStages = tasks.filter((task) => task.isCriticalPath).length;
 
   return (
@@ -66,6 +66,7 @@ export default function GanttPage() {
           project={project.data}
           tasks={tasks}
           dependencies={dependencies}
+          milestones={milestones}
           currentUserId={currentUser?.id}
           today={new Date().toISOString().slice(0, 10)}
         />
