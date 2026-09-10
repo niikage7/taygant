@@ -4,7 +4,7 @@
 #        ├─ 🐹 Бэкенд: gofmt, go vet, сборка, тесты с PostgreSQL
 #        ├─ ⚛️ Фронтенд: ESLint, TypeScript, сборка Next.js
 #        └─ 🐳 Docker: сборка образов, запуск стека, смоук-тест
-#             └─ 🚢 Деплой (только main): пересборка, обновление, смоук-тест, откат при сбое
+#             └─ 🚢 Деплой (только dev): пересборка, обновление, смоук-тест, откат при сбое
 #
 # Где смотреть результат:
 #   - вкладка Summary запуска — таблицы по каждому заданию, упавшие тесты с выводом;
@@ -33,11 +33,11 @@ on:
 permissions:
   contents: read
 
-# Новый пуш в ветку отменяет её незаконченный прогон. main не отменяем:
+# Новый пуш в ветку отменяет её незаконченный прогон. dev не отменяем:
 # там может идти деплой.
 concurrency:
   group: ci-cd-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
 
 defaults:
   run:
@@ -412,11 +412,12 @@ jobs:
   deploy:
     name: 🚢 Деплой
     needs: [backend, frontend, docker]
-    # Только из main. Смоук-тест стека обязателен всегда; красные тесты и линтеры
+    # Только из dev — сервер один, отдельного стенда для main нет.
+    # Смоук-тест стека обязателен всегда; красные тесты и линтеры
     # можно обойти вручную (Run workflow → «Деплоить, даже если…»).
     if: >-
       ${{ !cancelled()
-          && github.ref == 'refs/heads/main'
+          && github.ref == 'refs/heads/dev'
           && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
           && needs.docker.result == 'success'
           && ((needs.backend.result == 'success' && needs.frontend.result == 'success')
