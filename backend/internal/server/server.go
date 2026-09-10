@@ -12,13 +12,14 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"gorm.io/gorm"
 
 	"taygant_backend/internal/api"
 	"taygant_backend/internal/config"
 )
 
 // New создаёт настроенное приложение, готовое к Listen.
-func New(cfg config.Config) *fiber.App {
+func New(cfg config.Config, db *gorm.DB) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:      "taygant-api",
 		ErrorHandler: errorHandler,
@@ -40,11 +41,16 @@ func New(cfg config.Config) *fiber.App {
 	app.Use(cors.New(corsConfig(cfg)))
 
 	// Health-check для docker compose — намеренно вне /api/v1 и без rate limit.
+	// Проверяем и соединение с БД: приложение, потерявшее postgres, живым не считается.
 	app.Get("/ping", func(c *fiber.Ctx) error {
+		sqlDB, err := db.DB()
+		if err != nil || sqlDB.PingContext(c.Context()) != nil {
+			return fiber.NewError(fiber.StatusServiceUnavailable, "database unavailable")
+		}
 		return c.SendString("pong")
 	})
 
-	api.Register(app, rateLimiter(cfg))
+	api.New(db, cfg).Register(app, rateLimiter(cfg))
 
 	return app
 }
@@ -96,6 +102,9 @@ func rateLimiter(cfg config.Config) fiber.Handler {
 
 // errorHandler приводит любые ошибки к единому JSON-формату, чтобы фронт мог
 // разбирать их одинаково независимо от источника ошибки.
+//
+// Текст дублируется в "error" и "message": http-client фронтенда читает "message",
+// а "error" остаётся ради совместимости с уже написанными обработчиками.
 func errorHandler(c *fiber.Ctx, err error) error {
 	code := fiber.StatusInternalServerError
 	message := "internal server error"
@@ -107,7 +116,8 @@ func errorHandler(c *fiber.Ctx, err error) error {
 	}
 
 	return c.Status(code).JSON(fiber.Map{
-		"error": message,
-		"path":  c.Path(),
+		"error":   message,
+		"message": message,
+		"path":    c.Path(),
 	})
 }

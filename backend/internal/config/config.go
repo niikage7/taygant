@@ -23,6 +23,17 @@ type Config struct {
 	RateLimitMax int
 	// RateLimitWindow — длительность окна лимитера (RATE_LIMIT_WINDOW).
 	RateLimitWindow time.Duration
+	// DatabaseURL — строка подключения к PostgreSQL (DATABASE_URL).
+	DatabaseURL string
+	// JWTSecret — ключ подписи access- и refresh-токенов (JWT_SECRET).
+	// Смена ключа инвалидирует все выданные токены.
+	JWTSecret string
+	// AccessTokenTTL — время жизни access-токена (ACCESS_TOKEN_TTL).
+	AccessTokenTTL time.Duration
+	// RefreshTokenTTL — время жизни refresh-токена (REFRESH_TOKEN_TTL).
+	RefreshTokenTTL time.Duration
+	// SeedDemoData — наполнять ли пустую БД демонстрационными данными (SEED_DEMO_DATA).
+	SeedDemoData bool
 }
 
 // Load читает конфигурацию из окружения, подставляя значения по умолчанию.
@@ -33,7 +44,22 @@ func Load() Config {
 		TrustedProxies:  envList("TRUSTED_PROXIES", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"),
 		RateLimitMax:    envInt("RATE_LIMIT_MAX", 300),
 		RateLimitWindow: envDuration("RATE_LIMIT_WINDOW", time.Minute),
+		DatabaseURL:     envString("DATABASE_URL", "postgres://taygant:taygant@localhost:5432/taygant?sslmode=disable"),
+		JWTSecret:       envString("JWT_SECRET", devJWTSecret),
+		AccessTokenTTL:  envDuration("ACCESS_TOKEN_TTL", 24*time.Hour),
+		RefreshTokenTTL: envDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
+		SeedDemoData:    envBool("SEED_DEMO_DATA", true),
 	}
+}
+
+// devJWTSecret — заведомо небезопасный ключ для локального запуска без .env.
+// Вынесен в константу, чтобы UsesDevJWTSecret мог его распознать и предупредить.
+const devJWTSecret = "dev-only-insecure-secret-change-me"
+
+// UsesDevJWTSecret сообщает, что подпись токенов идёт дефолтным ключом из репозитория.
+// Для хакатонного демо это допустимо, но main обязан написать об этом в лог.
+func (c Config) UsesDevJWTSecret() bool {
+	return c.JWTSecret == devJWTSecret
 }
 
 func envString(key, fallback string) string {
@@ -82,6 +108,13 @@ func envOrigins(key, fallback string) []string {
 
 func envInt(key string, fallback int) int {
 	if v, err := strconv.Atoi(envString(key, "")); err == nil && v > 0 {
+		return v
+	}
+	return fallback
+}
+
+func envBool(key string, fallback bool) bool {
+	if v, err := strconv.ParseBool(envString(key, "")); err == nil {
 		return v
 	}
 	return fallback

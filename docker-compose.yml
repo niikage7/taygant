@@ -1,0 +1,60 @@
+# Окружение для разработки и демо: PostgreSQL + backend.
+# Фронтенд пока запускается отдельно через `pnpm dev` (см. frontend/README.md) —
+# контейнер для него появится, когда во frontend/ добавят Dockerfile.
+#
+# Запуск:  docker compose up --build
+# Логи:    docker compose logs -f backend
+# Сброс:   docker compose down -v   (-v удаляет том с данными)
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: taygant
+      POSTGRES_PASSWORD: taygant
+      POSTGRES_DB: taygant
+    ports:
+      # Порт наружу нужен, чтобы ходить в БД psql'ем и запускать backend локально
+      # через `go run .` без контейнера. В проде эту строку следует убрать.
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # backend стартует одновременно с БД и без этой проверки успел бы
+      # отвалиться на первом подключении.
+      test: ["CMD-SHELL", "pg_isready -U taygant -d taygant"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_PORT: "4000"
+      DATABASE_URL: "postgres://taygant:taygant@postgres:5432/taygant?sslmode=disable"
+      # Демо-ключ. Для публичного стенда задать через .env, а не править здесь.
+      JWT_SECRET: "dev-only-insecure-secret-change-me"
+      ACCESS_TOKEN_TTL: "24h"
+      REFRESH_TOKEN_TTL: "720h"
+      SEED_DEMO_DATA: "true"
+      ALLOWED_ORIGINS: "http://localhost:3000"
+      RATE_LIMIT_MAX: "300"
+      RATE_LIMIT_WINDOW: "1m"
+    ports:
+      # Пока фронт живёт вне compose и ходит на бэкенд напрямую, порт нужен наружу.
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:4000/ping || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres-data:
