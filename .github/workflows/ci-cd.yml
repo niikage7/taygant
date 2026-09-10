@@ -1,0 +1,545 @@
+# CI/CD taygant. Всё выполняется на своём (self-hosted) runner'е с Linux x64 и Docker.
+#
+#   🔎 Проверка runner'а
+#        ├─ 🐹 Бэкенд: gofmt, go vet, сборка, тесты с PostgreSQL
+#        ├─ ⚛️ Фронтенд: ESLint, TypeScript, сборка Next.js
+#        └─ 🐳 Docker: сборка образов, запуск стека, смоук-тест
+#             └─ 🚢 Деплой (только main): пересборка, обновление, смоук-тест, откат при сбое
+#
+# Где смотреть результат:
+#   - вкладка Summary запуска — таблицы по каждому заданию, упавшие тесты с выводом;
+#   - красные пометки (аннотации) — на строках кода, где упал тест или ошибка компиляции;
+#   - лог шага — полный вывод, логи контейнеров в сворачиваемых группах;
+#   - Artifacts внизу страницы запуска — все логи файлами (хранятся 14 дней).
+#
+# Что настроить в GitHub (Settings → Secrets and variables → Actions):
+#   - секрет JWT_SECRET — ключ подписи токенов на сервере (openssl rand -hex 32);
+#   - переменная APP_URL (необязательно) — адрес приложения для ссылки в отчёте деплоя.
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+    inputs:
+      deploy_despite_failed_checks:
+        description: "Деплоить из main, даже если тесты или линтеры красные (смоук-тест стека обязателен всегда)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Новый пуш в ветку отменяет её незаконченный прогон. main не отменяем:
+# там может идти деплой.
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    # Явный bash включает pipefail: `команда | tee лог` падает, если упала команда.
+    shell: bash
+
+env:
+  GO_MODULE: taygant_backend
+  NODE_VERSION: "22"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  preflight:
+    name: 🔎 Проверка runner'а
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 5
+    steps:
+      - name: 🖥️ Инструменты и ресурсы
+        run: |
+          problems=0
+          fail() { echo "::error title=$1::$2"; problems=1; }
+
+          echo "::group::Система"
+          uname -a
+          grep -E '^(PRETTY_NAME|VERSION)=' /etc/os-release || true
+          echo "CPU: $(nproc)"; free -h; df -h "$GITHUB_WORKSPACE"
+          echo "::endgroup::"
+
+          docker_version="—"; compose_version="—"
+          if ! command -v docker >/dev/null; then
+            fail "Нет Docker" "На runner'е не установлен Docker — он нужен для базы в тестах, сборки образов и деплоя"
+          elif ! docker info >/dev/null 2>&1; then
+            fail "Нет доступа к Docker" "Пользователь runner'а ($(whoami)) не может обратиться к Docker. Выполните: sudo usermod -aG docker $(whoami) и перезапустите службу runner'а"
+          else
+            docker_version=$(docker version --format '{{.Server.Version}}')
+            if compose_version=$(docker compose version --short 2>/dev/null); then
+              # !reset в .github/ci/compose.ci.yml появился в Compose 2.24.
+              if ! printf '2.24.0\n%s\n' "${compose_version#v}" | sort -V -C; then
+                fail "Старый Docker Compose" "Нужен Compose 2.24 или новее, установлен $compose_version"
+              fi
+            else
+              compose_version="—"
+              fail "Нет Docker Compose" "Не найден плагин docker compose v2"
+            fi
+          fi
+
+          free_gb=$(df -BG --output=avail "$GITHUB_WORKSPACE" | tail -n 1 | tr -dc '0-9')
+          if [ "${free_gb:-0}" -lt 10 ]; then
+            echo "::warning title=Мало места на диске::Свободно ${free_gb} ГБ — сборка образов может не поместиться. Очистка: docker system prune"
+          fi
+
+          {
+            echo "## 🔎 Runner «${RUNNER_NAME}»"
+            echo
+            echo "| Система | CPU | Память | Свободно на диске | Docker | Compose |"
+            echo "|---|:-:|:-:|:-:|:-:|:-:|"
+            echo "| $(. /etc/os-release && echo "$PRETTY_NAME") | $(nproc) | $(free -h | awk '/^Mem:/ {print $2}') | ${free_gb} ГБ | ${docker_version} | ${compose_version} |"
+            echo
+          } >>"$GITHUB_STEP_SUMMARY"
+
+          exit "$problems"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  backend:
+    name: 🐹 Бэкенд · gofmt, vet, тесты
+    needs: preflight
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      # База для интеграционных тестов. Порт на хосте выбирается случайно,
+      # чтобы не столкнуться с задеплоенной базой на 127.0.0.1:5432.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: taygant
+          POSTGRES_PASSWORD: taygant
+          POSTGRES_DB: taygant
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U taygant -d taygant"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - name: 📥 Код
+        uses: actions/checkout@v7
+
+      - name: 🧰 Go из backend/go.mod
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: 📦 Зависимости
+        id: deps
+        run: |
+          mkdir -p "$RUNNER_TEMP/logs"
+          go version
+          go mod download
+          go mod verify
+
+      - name: 🎨 Форматирование (gofmt)
+        id: fmt
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -z "$unformatted" ]; then
+            echo "✅ Все файлы отформатированы"
+            exit 0
+          fi
+          for file in $unformatted; do
+            echo "::error file=backend/$file,title=Файл не отформатирован::Выполните gofmt -w $file"
+          done
+          gofmt -d . | tee "$RUNNER_TEMP/logs/gofmt.diff"
+          exit 1
+
+      - name: 🔍 Статический анализ (go vet)
+        id: vet
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: go vet ./... 2>&1 | tee "$RUNNER_TEMP/logs/go-vet.log"
+
+      - name: 🏗️ Сборка
+        id: build
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: go build -v ./... 2>&1 | tee "$RUNNER_TEMP/logs/go-build.log"
+
+      - name: 🧪 Тесты (юнит + интеграционные с PostgreSQL)
+        id: test
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        env:
+          TEST_DATABASE_URL: postgres://taygant:taygant@localhost:${{ job.services.postgres.ports['5432'] }}/taygant?sslmode=disable
+        run: |
+          set +e
+          go test -json -count=1 -timeout 10m ./... >"$RUNNER_TEMP/logs/go-test.json" 2>"$RUNNER_TEMP/logs/go-test.stderr.log"
+          test_code=$?
+          cat "$RUNNER_TEMP/logs/go-test.stderr.log"
+
+          # Отчёт: итог по пакетам, вывод упавших тестов, аннотации, Summary.
+          (cd .. && go run .github/tools/gotestreport/main.go \
+            -module "$GO_MODULE" -dir backend -title "🧪 Тесты бэкенда" \
+            "$RUNNER_TEMP/logs/go-test.json")
+          report_code=$?
+
+          if [ "$report_code" -eq 0 ] && [ "$test_code" -ne 0 ]; then
+            echo "::error title=go test завершился с ошибкой::Код $test_code, хотя упавших тестов в отчёте нет — смотрите вывод выше"
+            exit 1
+          fi
+          exit "$report_code"
+
+      - name: 🐘 Лог PostgreSQL
+        if: ${{ failure() }}
+        run: docker logs "${{ job.services.postgres.id }}" 2>&1 | tee "$RUNNER_TEMP/logs/postgres.log" | tail -n 100
+
+      - name: 📝 Итог
+        if: ${{ always() }}
+        env:
+          DEPS: ${{ steps.deps.outcome }}
+          FMT: ${{ steps.fmt.outcome }}
+          VET: ${{ steps.vet.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          TEST: ${{ steps.test.outcome }}
+        run: |
+          icon() { case "$1" in success) echo "✅";; failure) echo "❌";; skipped) echo "⏭️";; cancelled) echo "🚫";; *) echo "➖";; esac; }
+          details() {
+            [ -s "$2" ] || return 0
+            echo "<details><summary>$1</summary>"; echo; echo '```text'; tail -n 60 "$2"; echo '```'; echo "</details>"; echo
+          }
+          {
+            echo "## 🐹 Бэкенд"
+            echo
+            echo "| Зависимости | gofmt | go vet | Сборка | Тесты |"
+            echo "|:-:|:-:|:-:|:-:|:-:|"
+            echo "| $(icon "$DEPS") | $(icon "$FMT") | $(icon "$VET") | $(icon "$BUILD") | $(icon "$TEST") |"
+            echo
+            [ "$FMT" = failure ] && details "🎨 Что поправить в форматировании" "$RUNNER_TEMP/logs/gofmt.diff"
+            [ "$VET" = failure ] && details "🔍 Замечания go vet" "$RUNNER_TEMP/logs/go-vet.log"
+            [ "$BUILD" = failure ] && details "🏗️ Ошибки сборки" "$RUNNER_TEMP/logs/go-build.log"
+            true
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: 📦 Логи в артефакты
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-logs
+          path: ${{ runner.temp }}/logs
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  frontend:
+    name: ⚛️ Фронтенд · ESLint, TypeScript, сборка
+    needs: preflight
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Тот же адрес, что вшивается в Docker-образ (см. docker-compose.yml).
+      BACKEND_URL: http://backend:4000
+    steps:
+      - name: 📥 Код
+        uses: actions/checkout@v7
+
+      - name: 🧰 pnpm из frontend/package.json
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - name: 🧰 Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: 📦 Зависимости
+        id: deps
+        run: |
+          mkdir -p "$RUNNER_TEMP/logs"
+          echo "node $(node -v), pnpm $(pnpm -v)"
+          pnpm install --frozen-lockfile 2>&1 | tee "$RUNNER_TEMP/logs/pnpm-install.log"
+
+      - name: 🧹 ESLint
+        id: lint
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: pnpm lint 2>&1 | tee "$RUNNER_TEMP/logs/eslint.log"
+
+      - name: 🔤 Проверка типов (TypeScript)
+        id: types
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: |
+          # PageProps, LayoutProps и типы маршрутов Next генерирует сам — без них tsc ругается.
+          pnpm exec next typegen
+          pnpm exec tsc --noEmit --pretty false 2>&1 | tee "$RUNNER_TEMP/logs/tsc.log"
+
+      - name: 🏗️ Сборка Next.js
+        id: build
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: pnpm build 2>&1 | tee "$RUNNER_TEMP/logs/next-build.log"
+
+      - name: 📝 Итог
+        if: ${{ always() }}
+        env:
+          DEPS: ${{ steps.deps.outcome }}
+          LINT: ${{ steps.lint.outcome }}
+          TYPES: ${{ steps.types.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+        run: |
+          icon() { case "$1" in success) echo "✅";; failure) echo "❌";; skipped) echo "⏭️";; cancelled) echo "🚫";; *) echo "➖";; esac; }
+          details() {
+            [ -s "$2" ] || return 0
+            echo "<details><summary>$1</summary>"; echo; echo '```text'; tail -n 60 "$2"; echo '```'; echo "</details>"; echo
+          }
+          {
+            echo "## ⚛️ Фронтенд"
+            echo
+            echo "| Зависимости | ESLint | TypeScript | Сборка |"
+            echo "|:-:|:-:|:-:|:-:|"
+            echo "| $(icon "$DEPS") | $(icon "$LINT") | $(icon "$TYPES") | $(icon "$BUILD") |"
+            echo
+            [ "$DEPS" = failure ] && details "📦 Ошибка установки зависимостей" "$RUNNER_TEMP/logs/pnpm-install.log"
+            [ "$LINT" = failure ] && details "🧹 Вывод ESLint" "$RUNNER_TEMP/logs/eslint.log"
+            [ "$TYPES" = failure ] && details "🔤 Ошибки типов" "$RUNNER_TEMP/logs/tsc.log"
+            if [ "$BUILD" = success ]; then
+              # Таблица маршрутов из вывода next build: что статическое, что динамическое.
+              echo "<details><summary>🗺️ Маршруты сборки</summary>"; echo; echo '```text'
+              sed 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/logs/next-build.log" | sed -n '/Route (app)/,/(Dynamic)/p'
+              echo '```'; echo "</details>"; echo
+            fi
+            [ "$BUILD" = failure ] && details "🏗️ Ошибки сборки" "$RUNNER_TEMP/logs/next-build.log"
+            true
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: 📦 Логи в артефакты
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-logs
+          path: ${{ runner.temp }}/logs
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  docker:
+    name: 🐳 Docker · образы и смоук-тест стека
+    needs: preflight
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 25
+    env:
+      # Отдельный проект на каждый запуск: не пересекается ни с деплоем, ни с другими прогонами.
+      COMPOSE_PROJECT_NAME: taygant-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      # compose.ci.yml снимает публикацию портов — они заняты задеплоенной версией.
+      COMPOSE_FILE: docker-compose.yml:.github/ci/compose.ci.yml
+      JWT_SECRET: ci-only-${{ github.run_id }}-not-a-real-secret
+      SMOKE_DEMO_LOGIN: "true"
+    steps:
+      - name: 📥 Код
+        uses: actions/checkout@v7
+
+      - name: 🏗️ Сборка образов
+        id: build
+        run: |
+          mkdir -p "$RUNNER_TEMP/logs"
+          docker compose --progress plain build 2>&1 | tee "$RUNNER_TEMP/logs/docker-build.log"
+
+      - name: 🚀 Запуск стека (ждём healthcheck всех сервисов)
+        id: up
+        run: docker compose up -d --no-build --wait --wait-timeout 180
+
+      - name: 🩺 Смоук-тест
+        id: smoke
+        run: .github/ci/smoke.sh
+
+      - name: 📜 Логи контейнеров
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        env:
+          PRINT: ${{ (steps.up.outcome == 'failure' || steps.smoke.outcome == 'failure') && '--print' || '' }}
+        run: .github/ci/collect-logs.sh "$RUNNER_TEMP/logs/containers" ${PRINT:+"$PRINT"}
+
+      - name: 📝 Итог
+        if: ${{ always() }}
+        env:
+          BUILD: ${{ steps.build.outcome }}
+          UP: ${{ steps.up.outcome }}
+          SMOKE: ${{ steps.smoke.outcome }}
+        run: |
+          icon() { case "$1" in success) echo "✅";; failure) echo "❌";; skipped) echo "⏭️";; cancelled) echo "🚫";; *) echo "➖";; esac; }
+          {
+            echo "## 🐳 Docker"
+            echo
+            echo "| Сборка образов | Запуск стека | Смоук-тест |"
+            echo "|:-:|:-:|:-:|"
+            echo "| $(icon "$BUILD") | $(icon "$UP") | $(icon "$SMOKE") |"
+            echo
+            if [ "$BUILD" = success ]; then
+              echo "| Сервис | Образ | Размер |"
+              echo "|---|---|--:|"
+              for service in backend frontend; do
+                image="${COMPOSE_PROJECT_NAME}-${service}"
+                size=$(docker image inspect --format '{{.Size}}' "$image" 2>/dev/null | awk '{printf "%.0f МБ", $1/1024/1024}')
+                echo "| $service | \`$image\` | ${size:-—} |"
+              done
+              echo
+            elif [ "$BUILD" = failure ]; then
+              echo "<details><summary>🏗️ Конец лога сборки</summary>"; echo; echo '```text'
+              tail -n 80 "$RUNNER_TEMP/logs/docker-build.log"; echo '```'; echo "</details>"; echo
+            fi
+            if [ "$UP" = failure ] || [ "$SMOKE" = failure ]; then
+              echo "> Логи всех контейнеров — в группах шага «📜 Логи контейнеров» и в артефакте **docker-logs**."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: 📦 Логи в артефакты
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-logs
+          path: ${{ runner.temp }}/logs
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: 🧹 Уборка
+        if: ${{ always() }}
+        run: docker compose down --volumes --remove-orphans --rmi local
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: 🚢 Деплой
+    needs: [backend, frontend, docker]
+    # Только из main. Смоук-тест стека обязателен всегда; красные тесты и линтеры
+    # можно обойти вручную (Run workflow → «Деплоить, даже если…»).
+    if: >-
+      ${{ !cancelled()
+          && github.ref == 'refs/heads/main'
+          && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          && needs.docker.result == 'success'
+          && ((needs.backend.result == 'success' && needs.frontend.result == 'success')
+              || inputs.deploy_despite_failed_checks) }}
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 30
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      COMPOSE_PROJECT_NAME: taygant
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+    steps:
+      - name: 📥 Код
+        uses: actions/checkout@v7
+
+      - name: 🔐 Секреты на месте
+        run: |
+          if [ -z "$JWT_SECRET" ]; then
+            echo "::error title=Нет секрета JWT_SECRET::Добавьте его: Settings → Secrets and variables → Actions → New repository secret. Значение: openssl rand -hex 32"
+            exit 1
+          fi
+          # Ключ из .env.example лежит в репозитории — на сервере он был бы известен всем.
+          if [ "JWT_SECRET=$JWT_SECRET" = "$(grep '^JWT_SECRET=' .env.example)" ]; then
+            echo "::error title=JWT_SECRET совпадает с ключом для разработки::Секрет в GitHub равен значению из .env.example. Задайте свой: openssl rand -hex 32"
+            exit 1
+          fi
+          if [ "${#JWT_SECRET}" -lt 32 ]; then
+            echo "::warning title=Короткий JWT_SECRET::Ключ короче 32 символов — токены проще подделать. Сгенерируйте новый: openssl rand -hex 32"
+          fi
+          echo "✅ JWT_SECRET задан и не совпадает с ключом для разработки"
+
+      - name: 📸 Запоминаем текущую версию для отката
+        id: snapshot
+        run: |
+          mkdir -p "$RUNNER_TEMP/logs"
+          previous=true
+          for service in backend frontend; do
+            if docker image inspect "taygant-$service:latest" >/dev/null 2>&1; then
+              docker tag "taygant-$service:latest" "taygant-$service:previous"
+              echo "📸 taygant-$service:previous ← $(docker image inspect --format '{{.Id}}' "taygant-$service:latest" | cut -c8-19)"
+            else
+              previous=false
+            fi
+          done
+          [ "$previous" = true ] || echo "Первый деплой — откатываться будет не на что."
+          echo "has_previous=$previous" >>"$GITHUB_OUTPUT"
+
+      - name: 🏗️ Сборка образов
+        id: build
+        run: docker compose --progress plain build 2>&1 | tee "$RUNNER_TEMP/logs/docker-build.log"
+
+      - name: 🚀 Обновление сервисов
+        id: up
+        run: docker compose up -d --no-build --wait --wait-timeout 300 --remove-orphans
+
+      - name: 🩺 Смоук-тест
+        id: smoke
+        run: .github/ci/smoke.sh
+
+      - name: 📜 Логи контейнеров
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        env:
+          PRINT: ${{ (steps.up.outcome == 'failure' || steps.smoke.outcome == 'failure') && '--print' || '' }}
+        run: .github/ci/collect-logs.sh "$RUNNER_TEMP/logs/containers" ${PRINT:+"$PRINT"}
+
+      - name: ↩️ Откат на предыдущую версию
+        id: rollback
+        if: ${{ failure() && steps.snapshot.outputs.has_previous == 'true' && (steps.up.outcome == 'failure' || steps.smoke.outcome == 'failure') }}
+        run: |
+          # База не откатывается: AutoMigrate только добавляет колонки, старый код с ними работает.
+          for service in backend frontend; do
+            docker tag "taygant-$service:previous" "taygant-$service:latest"
+          done
+          docker compose up -d --no-build --wait --wait-timeout 300 --remove-orphans
+          .github/ci/smoke.sh
+          echo "::warning title=Выполнен откат::Новая версия не прошла проверку, на сервере снова работает предыдущая. Причина — в логах шагов выше."
+
+      - name: 🧹 Уборка старых образов и кэша сборки
+        if: ${{ success() }}
+        run: |
+          docker image prune -f
+          docker builder prune -f --filter until=168h
+
+      - name: 📝 Итог
+        if: ${{ always() }}
+        env:
+          BUILD: ${{ steps.build.outcome }}
+          UP: ${{ steps.up.outcome }}
+          SMOKE: ${{ steps.smoke.outcome }}
+          ROLLBACK: ${{ steps.rollback.outcome }}
+          FORCED: ${{ needs.backend.result != 'success' || needs.frontend.result != 'success' }}
+          APP_URL: ${{ vars.APP_URL }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+        run: |
+          icon() { case "$1" in success) echo "✅";; failure) echo "❌";; skipped) echo "⏭️";; cancelled) echo "🚫";; *) echo "➖";; esac; }
+          {
+            if [ "$UP" = success ] && [ "$SMOKE" = success ]; then
+              echo "## 🚢 Деплой прошёл"
+            elif [ "$ROLLBACK" = success ]; then
+              echo "## ↩️ Деплой откатен — работает предыдущая версия"
+            else
+              echo "## ❌ Деплой не удался"
+            fi
+            echo
+            echo "| Коммит | Автор | Сборка | Обновление | Смоук-тест | Откат |"
+            echo "|---|---|:-:|:-:|:-:|:-:|"
+            echo "| [\`${GITHUB_SHA::7}\`]($COMMIT_URL) | ${GITHUB_ACTOR} | $(icon "$BUILD") | $(icon "$UP") | $(icon "$SMOKE") | $(icon "$ROLLBACK") |"
+            echo
+            [ -n "$APP_URL" ] && echo "🌐 Приложение: $APP_URL" && echo
+            [ "$FORCED" = true ] && echo "> ⚠️ Задеплоено вручную, несмотря на красные проверки бэкенда или фронтенда." && echo
+            if [ "$BUILD" = success ]; then
+              echo '```text'; docker compose ps -a --format 'table {{.Service}}\t{{.State}}\t{{.Health}}\t{{.Ports}}' 2>&1; echo '```'
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: 📦 Логи в артефакты
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: deploy-logs
+          path: ${{ runner.temp }}/logs
+          retention-days: 14
+          if-no-files-found: ignore
