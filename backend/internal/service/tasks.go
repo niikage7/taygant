@@ -102,6 +102,7 @@ func buildProjectGraph(ctx context.Context, db *gorm.DB, projectID uuid.UUID) (*
 type Filter struct {
 	SprintID         *uuid.UUID
 	AssigneeID       *uuid.UUID
+	MilestoneID      *uuid.UUID
 	Status           models.TaskStatus
 	CriticalPathOnly bool
 	RisksOnly        bool
@@ -124,6 +125,9 @@ func (s *Tasks) List(ctx context.Context, projectID uuid.UUID, calendar models.P
 	}
 	if f.AssigneeID != nil {
 		query = query.Where("assignee_id = ?", *f.AssigneeID)
+	}
+	if f.MilestoneID != nil {
+		query = query.Where("milestone_id = ?", *f.MilestoneID)
 	}
 	if search := strings.TrimSpace(f.Search); search != "" {
 		pattern := "%" + escapeLikePattern(search) + "%"
@@ -296,6 +300,14 @@ type TaskInput struct {
 	EndDate         *models.Date
 	ProgressPercent *int
 	WeightPercent   *float64
+
+	// MilestoneID/MilestoneIDSet — контрольная точка, к которой ведёт задача.
+	// В Create() учитывается только сам MilestoneID (задать веху или не задать —
+	// разница между «не передано» и «null» при создании не нужна). В Update()
+	// MilestoneIDSet различает «поле не передано» (false — не менять) от
+	// «передано» (true): nil тогда означает явную отвязку от вехи.
+	MilestoneID    *uuid.UUID
+	MilestoneIDSet bool
 }
 
 // PredecessorInput — связь-предшественник, создаваемая вместе с задачей.
@@ -350,6 +362,9 @@ func (s *Tasks) Create(ctx context.Context, projectID, actorID uuid.UUID, in Tas
 	if in.WeightPercent != nil {
 		task.WeightPercent = *in.WeightPercent
 	}
+	if in.MilestoneID != nil {
+		task.MilestoneID = in.MilestoneID
+	}
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		code, orderIndex, err := nextTaskCode(tx, projectID)
@@ -368,6 +383,11 @@ func (s *Tasks) Create(ctx context.Context, projectID, actorID uuid.UUID, in Tas
 		}
 		if in.AssigneeID != nil {
 			if err := validateAssignee(tx, projectID, *in.AssigneeID); err != nil {
+				return err
+			}
+		}
+		if in.MilestoneID != nil {
+			if err := validateMilestone(tx, projectID, *in.MilestoneID); err != nil {
 				return err
 			}
 		}
@@ -484,6 +504,19 @@ func validateSprintAndParent(tx *gorm.DB, projectID uuid.UUID, sprintID, parentI
 	return nil
 }
 
+// validateMilestone проверяет, что веха принадлежит тому же проекту, что и
+// задача — иначе задача могла бы вести к чужой контрольной точке.
+func validateMilestone(tx *gorm.DB, projectID, milestoneID uuid.UUID) error {
+	var count int64
+	if err := tx.Model(&models.Milestone{}).Where("id = ? AND project_id = ?", milestoneID, projectID).Count(&count).Error; err != nil {
+		return fmt.Errorf("проверить контрольную точку: %w", err)
+	}
+	if count == 0 {
+		return Invalid("контрольная точка не найдена в этом проекте")
+	}
+	return nil
+}
+
 func validateAssignee(tx *gorm.DB, projectID, userID uuid.UUID) error {
 	var count int64
 	err := tx.Model(&models.ProjectMember{}).
@@ -551,6 +584,20 @@ func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskIn
 			task.SprintID = in.SprintID
 			if !uuidPtrEqual(old, in.SprintID) {
 				if err := recordHistory(tx, taskID, actorID, models.HistoryActionUpdated, strPtr("sprintId"), uuidPtrString(old), uuidPtrString(in.SprintID)); err != nil {
+					return err
+				}
+			}
+		}
+		if in.MilestoneIDSet {
+			if in.MilestoneID != nil {
+				if err := validateMilestone(tx, task.ProjectID, *in.MilestoneID); err != nil {
+					return err
+				}
+			}
+			old := task.MilestoneID
+			task.MilestoneID = in.MilestoneID
+			if !uuidPtrEqual(old, in.MilestoneID) {
+				if err := recordHistory(tx, taskID, actorID, models.HistoryActionUpdated, strPtr("milestoneId"), uuidPtrString(old), uuidPtrString(in.MilestoneID)); err != nil {
 					return err
 				}
 			}

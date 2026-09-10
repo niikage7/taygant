@@ -23,6 +23,11 @@ type Task struct {
 	ParentTaskID *uuid.UUID `gorm:"type:uuid;index"`
 	ParentTask   *Task      `gorm:"foreignKey:ParentTaskID;constraint:OnDelete:CASCADE"`
 
+	// MilestoneID — контрольная точка, к которой ведёт задача. SET NULL, а не
+	// CASCADE: удаление вехи не должно уносить с собой задачи, которые к ней вели.
+	MilestoneID *uuid.UUID `gorm:"type:uuid;index"`
+	Milestone   *Milestone `gorm:"foreignKey:MilestoneID;constraint:OnDelete:SET NULL"`
+
 	// Code — читаемый код задачи («TASK-004»), уникален в пределах проекта.
 	Code string `gorm:"type:varchar(32);not null;index"`
 	// WBSNumber — номер в иерархической структуре работ («4.2»).

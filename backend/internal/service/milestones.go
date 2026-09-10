@@ -28,7 +28,8 @@ func (s *Milestones) ProjectID(ctx context.Context, milestoneID uuid.UUID) (uuid
 	return projectIDOfMilestone(ctx, s.db, milestoneID)
 }
 
-// List возвращает вехи проекта в хронологическом порядке с вычисленным статусом.
+// List возвращает вехи проекта в хронологическом порядке с вычисленным статусом
+// и счётчиками задач, которые к ним привязаны.
 //
 // Статус вехи (done/current/planned/final) не хранится в таблице: спецификация
 // не принимает его при создании, он всегда выводится из плановых дат — так же,
@@ -40,7 +41,48 @@ func (s *Milestones) List(ctx context.Context, projectID uuid.UUID) ([]models.Mi
 		return nil, fmt.Errorf("выбрать вехи: %w", err)
 	}
 	deriveMilestoneStatuses(milestones)
+
+	counts, err := milestoneTaskCounts(ctx, s.db, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range milestones {
+		c := counts[milestones[i].ID]
+		milestones[i].TasksTotal = c.Total
+		milestones[i].TasksDone = c.Done
+	}
 	return milestones, nil
+}
+
+// milestoneTaskCount — сколько задач ведёт к одной вехе и сколько из них завершено.
+type milestoneTaskCount struct {
+	Total int
+	Done  int
+}
+
+// milestoneTaskCounts одним запросом считает задачи проекта, привязанные к
+// вехам через Task.MilestoneID: иначе для каждой вехи в списке понадобился бы
+// отдельный запрос за задачами (проблема N+1), а фронту эти счётчики нужны
+// на каждый рендер списка вех.
+func milestoneTaskCounts(ctx context.Context, db *gorm.DB, projectID uuid.UUID) (map[uuid.UUID]milestoneTaskCount, error) {
+	var rows []struct {
+		MilestoneID uuid.UUID
+		Total       int
+		Done        int
+	}
+	err := db.WithContext(ctx).Model(&models.Task{}).
+		Select("milestone_id, COUNT(*) AS total, COUNT(*) FILTER (WHERE status = ?) AS done", models.TaskStatusDone).
+		Where("project_id = ? AND milestone_id IS NOT NULL", projectID).
+		Group("milestone_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("посчитать задачи по вехам: %w", err)
+	}
+	out := make(map[uuid.UUID]milestoneTaskCount, len(rows))
+	for _, r := range rows {
+		out[r.MilestoneID] = milestoneTaskCount{Total: r.Total, Done: r.Done}
+	}
+	return out, nil
 }
 
 // deriveMilestoneStatuses проставляет статус каждой вехи по месту, на основе
@@ -79,6 +121,14 @@ type MilestoneInput struct {
 	Code        string
 	Name        string
 	PlannedDate models.Date
+
+	// ActualDate/ActualDateSet — фактическая дата достижения вехи. ActualDateSet
+	// различает «поле не передано» (false — не менять) от «передано» (true):
+	// при true ActualDate == nil означает явный null (снять отметку о
+	// достижении), непустое значение — отметить веху достигнутой. Учитывается
+	// только в Update — на создании веха не может быть уже достигнута.
+	ActualDate    *models.Date
+	ActualDateSet bool
 }
 
 func (in MilestoneInput) validate() error {
@@ -129,6 +179,9 @@ func (s *Milestones) Update(ctx context.Context, milestoneID uuid.UUID, in Miles
 	milestone.Code = strings.TrimSpace(in.Code)
 	milestone.Name = strings.TrimSpace(in.Name)
 	milestone.PlannedDate = in.PlannedDate
+	if in.ActualDateSet {
+		milestone.ActualDate = in.ActualDate
+	}
 
 	if err := s.db.WithContext(ctx).Save(&milestone).Error; err != nil {
 		return models.Milestone{}, fmt.Errorf("сохранить веху: %w", err)

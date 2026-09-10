@@ -12,6 +12,7 @@ type taskDTO struct {
 	ProjectID                 uuid.UUID         `json:"projectId"`
 	SprintID                  *uuid.UUID        `json:"sprintId"`
 	ParentTaskID              *uuid.UUID        `json:"parentTaskId"`
+	MilestoneID               *uuid.UUID        `json:"milestoneId"`
 	Code                      string            `json:"code"`
 	WBSNumber                 string            `json:"wbsNumber"`
 	Title                     string            `json:"title"`
@@ -35,6 +36,7 @@ func newTaskDTO(t models.Task) taskDTO {
 		ProjectID:                 t.ProjectID,
 		SprintID:                  t.SprintID,
 		ParentTaskID:              t.ParentTaskID,
+		MilestoneID:               t.MilestoneID,
 		Code:                      t.Code,
 		WBSNumber:                 t.WBSNumber,
 		Title:                     t.Title,

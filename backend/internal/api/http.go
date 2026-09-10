@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 
 	"github.com/gofiber/fiber/v2"
@@ -77,4 +79,32 @@ func queryUUID(c *fiber.Ctx, name string) (*uuid.UUID, error) {
 // трактуется как false — так withDefault-парсинг не нужен ни в одном хендлере.
 func queryBool(c *fiber.Ctx, name string) bool {
 	return c.Query(name) == "true"
+}
+
+// Nullable различает три состояния PATCH-поля в теле запроса: ключ не передан
+// (Set == false — не менять), передан как null (Set == true, Value == nil —
+// снять значение) и передан со значением (Set == true, Value != nil).
+//
+// Обычный указатель *T этого не может: encoding/json обнуляет поле что при
+// отсутствующем ключе, что при explicit null — оба случая неотличимы друг от
+// друга без собственного UnmarshalJSON.
+type Nullable[T any] struct {
+	Set   bool
+	Value *T
+}
+
+// UnmarshalJSON вызывается только если ключ присутствует в теле запроса —
+// этим и достигается различение «не передано» от «передано как null».
+func (n *Nullable[T]) UnmarshalJSON(data []byte) error {
+	n.Set = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		n.Value = nil
+		return nil
+	}
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	n.Value = &v
+	return nil
 }

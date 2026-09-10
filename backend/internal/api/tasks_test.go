@@ -101,6 +101,7 @@ func TestTaskReferencesMustBelongToProject(t *testing.T) {
 		"name": "Чужой спринт", "startDate": day(1), "endDate": day(5),
 	}).want(t, http.StatusCreated))
 	otherTask := newTask(t, owner.Token, other.ID, nil)
+	otherMilestone := newMilestone(t, owner.Token, other.ID, nil)
 	path := "/projects/" + project.ID + "/tasks"
 
 	cases := []struct {
@@ -109,6 +110,7 @@ func TestTaskReferencesMustBelongToProject(t *testing.T) {
 		{"ответственный не в команде", "assigneeId", stranger.ID},
 		{"спринт другого проекта", "sprintId", otherSprint.ID},
 		{"родитель из другого проекта", "parentTaskId", otherTask.ID},
+		{"веха другого проекта", "milestoneId", otherMilestone.ID},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -121,6 +123,7 @@ func TestTaskReferencesMustBelongToProject(t *testing.T) {
 	task := newTask(t, owner.Token, project.ID, nil)
 	patch(t, owner.Token, "/tasks/"+task.ID, map[string]any{"assigneeId": stranger.ID}).want(t, http.StatusBadRequest)
 	patch(t, owner.Token, "/tasks/"+task.ID, map[string]any{"sprintId": otherSprint.ID}).want(t, http.StatusBadRequest)
+	patch(t, owner.Token, "/tasks/"+task.ID, map[string]any{"milestoneId": otherMilestone.ID}).want(t, http.StatusBadRequest)
 }
 
 func TestSubtaskWBSNumbering(t *testing.T) {
@@ -221,6 +224,31 @@ func TestUpdateTaskIsPartial(t *testing.T) {
 	get(t, owner.Token, "/tasks/not-a-uuid").want(t, http.StatusBadRequest)
 }
 
+func TestTaskMilestoneLinkTriState(t *testing.T) {
+	requireDB(t)
+	owner := newUser(t, "Планировщик")
+	project := newProject(t, owner)
+	milestone := newMilestone(t, owner.Token, project.ID, nil)
+	task := newTask(t, owner.Token, project.ID, map[string]any{"milestoneId": milestone.ID})
+	path := "/tasks/" + task.ID
+
+	if task.MilestoneID == nil || *task.MilestoneID != milestone.ID {
+		t.Fatalf("milestoneId при создании = %v, ожидался %s", task.MilestoneID, milestone.ID)
+	}
+
+	// Поле не передано — привязка не меняется.
+	untouched := decode[taskJSON](t, patch(t, owner.Token, path, map[string]any{"title": "Переименована"}).want(t, http.StatusOK))
+	if untouched.MilestoneID == nil || *untouched.MilestoneID != milestone.ID {
+		t.Fatalf("milestoneId после PATCH без поля = %v, ожидался %s", untouched.MilestoneID, milestone.ID)
+	}
+
+	// Явный null отвязывает задачу от вехи.
+	detached := decode[taskJSON](t, patch(t, owner.Token, path, map[string]any{"milestoneId": nil}).want(t, http.StatusOK))
+	if detached.MilestoneID != nil {
+		t.Fatalf("milestoneId после null = %v, ожидался nil", detached.MilestoneID)
+	}
+}
+
 func TestTaskStatusIsDerivedFromDatesAndDependencies(t *testing.T) {
 	requireDB(t)
 	owner := newUser(t, "Контролёр")
@@ -264,9 +292,11 @@ func TestTaskListFilters(t *testing.T) {
 		"name": "С1", "startDate": day(0), "endDate": day(14),
 	}).want(t, http.StatusCreated))
 
+	milestone := newMilestone(t, owner.Token, project.ID, nil)
 	mine := newTask(t, owner.Token, project.ID, map[string]any{"assigneeId": dev.ID, "sprintId": sprint.ID})
 	late := newTask(t, owner.Token, project.ID, map[string]any{"startDate": day(-9), "endDate": day(-2)})
 	marked := newTask(t, owner.Token, project.ID, map[string]any{"title": "Интеграция с GitLab"})
+	withMilestone := newTask(t, owner.Token, project.ID, map[string]any{"milestoneId": milestone.ID})
 
 	list := func(token, query string) []string {
 		t.Helper()
@@ -278,8 +308,8 @@ func TestTaskListFilters(t *testing.T) {
 		return ids
 	}
 
-	if got := list(owner.Token, ""); len(got) != 3 {
-		t.Fatalf("без фильтров %d задач, ожидалось 3", len(got))
+	if got := list(owner.Token, ""); len(got) != 4 {
+		t.Fatalf("без фильтров %d задач, ожидалось 4", len(got))
 	}
 	cases := []struct {
 		name, token, query, want string
@@ -290,6 +320,7 @@ func TestTaskListFilters(t *testing.T) {
 		{"status=overdue", owner.Token, "?status=overdue", late.ID},
 		{"risksOnly", owner.Token, "?risksOnly=true", late.ID},
 		{"search без учёта регистра", owner.Token, "?search=gitlab", marked.ID},
+		{"milestoneId", owner.Token, "?milestoneId=" + milestone.ID, withMilestone.ID},
 	}
 	for _, tc := range cases {
 		if got := list(tc.token, tc.query); len(got) != 1 || got[0] != tc.want {

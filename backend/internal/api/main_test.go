@@ -299,6 +299,7 @@ type taskJSON struct {
 	ProjectID                 string    `json:"projectId"`
 	SprintID                  *string   `json:"sprintId"`
 	ParentTaskID              *string   `json:"parentTaskId"`
+	MilestoneID               *string   `json:"milestoneId"`
 	Code                      string    `json:"code"`
 	WBSNumber                 string    `json:"wbsNumber"`
 	Title                     string    `json:"title"`
@@ -367,12 +368,16 @@ type sprintJSON struct {
 }
 
 type milestoneJSON struct {
-	ID          string `json:"id"`
-	Code        string `json:"code"`
-	Name        string `json:"name"`
-	PlannedDate string `json:"plannedDate"`
-	Status      string `json:"status"`
-	RiskDays    *int   `json:"riskDays"`
+	ID          string  `json:"id"`
+	ProjectID   string  `json:"projectId"`
+	Code        string  `json:"code"`
+	Name        string  `json:"name"`
+	PlannedDate string  `json:"plannedDate"`
+	ActualDate  *string `json:"actualDate"`
+	Status      string  `json:"status"`
+	RiskDays    *int    `json:"riskDays"`
+	TasksTotal  int     `json:"tasksTotal"`
+	TasksDone   int     `json:"tasksDone"`
 }
 
 // ---------- Фикстуры ----------
@@ -437,6 +442,17 @@ func newTask(t *testing.T, token, projectID string, fields map[string]any) taskJ
 	}
 	r := post(t, token, "/projects/"+projectID+"/tasks", body).want(t, http.StatusCreated)
 	return decode[taskJSON](t, r)
+}
+
+// newMilestone создаёт веху проекта; fields дополняют и переопределяют тело запроса.
+func newMilestone(t *testing.T, token, projectID string, fields map[string]any) milestoneJSON {
+	t.Helper()
+	body := map[string]any{"name": fmt.Sprintf("Веха %d", uniq()), "plannedDate": day(5)}
+	for k, v := range fields {
+		body[k] = v
+	}
+	r := post(t, token, "/projects/"+projectID+"/milestones", body).want(t, http.StatusCreated)
+	return decode[milestoneJSON](t, r)
 }
 
 // day возвращает дату «сегодня + offset дней» в формате API (YYYY-MM-DD).

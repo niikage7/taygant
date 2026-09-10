@@ -22,7 +22,7 @@ func (a *API) registerTasksRoutes(r fiber.Router) {
 }
 
 // GET /projects/{projectId}/tasks — реестр задач проекта / данные для Ганта.
-// Query: sprintId, assigneeId, status, criticalPathOnly, risksOnly, myTasksOnly, search.
+// Query: sprintId, assigneeId, milestoneId, status, criticalPathOnly, risksOnly, myTasksOnly, search.
 //
 // myTasksOnly подставляет ID текущего пользователя в тот же фильтр, что и assigneeId.
 // 200 -> []Task.
@@ -44,6 +44,10 @@ func (a *API) tasksList(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	milestoneID, err := queryUUID(c, "milestoneId")
+	if err != nil {
+		return err
+	}
 	if queryBool(c, "myTasksOnly") {
 		me := currentUserID(c)
 		assigneeID = &me
@@ -56,6 +60,7 @@ func (a *API) tasksList(c *fiber.Ctx) error {
 	tasks, err := a.tasks.List(c.Context(), projectID, m.Project, service.Filter{
 		SprintID:         sprintID,
 		AssigneeID:       assigneeID,
+		MilestoneID:      milestoneID,
 		Status:           status,
 		CriticalPathOnly: queryBool(c, "criticalPathOnly"),
 		RisksOnly:        queryBool(c, "risksOnly"),
@@ -130,6 +135,7 @@ type taskPredecessorRequest struct {
 type taskCreateRequest struct {
 	SprintID      *uuid.UUID               `json:"sprintId"`
 	ParentTaskID  *uuid.UUID               `json:"parentTaskId"`
+	MilestoneID   *uuid.UUID               `json:"milestoneId"`
 	Title         string                   `json:"title"`
 	Description   string                   `json:"description"`
 	AssigneeID    *uuid.UUID               `json:"assigneeId"`
@@ -167,6 +173,7 @@ func (a *API) tasksCreate(c *fiber.Ctx) error {
 	task, err := a.tasks.Create(c.Context(), projectID, currentUserID(c), service.TaskInput{
 		SprintID:      body.SprintID,
 		ParentTaskID:  body.ParentTaskID,
+		MilestoneID:   body.MilestoneID,
 		Title:         &title,
 		Description:   &description,
 		AssigneeID:    body.AssigneeID,
@@ -220,15 +227,18 @@ func (a *API) tasksGet(c *fiber.Ctx) error {
 
 // taskUpdateRequest — тело PATCH /tasks/{taskId}.
 type taskUpdateRequest struct {
-	SprintID        *uuid.UUID         `json:"sprintId"`
-	Title           *string            `json:"title"`
-	Description     *string            `json:"description"`
-	AssigneeID      *uuid.UUID         `json:"assigneeId"`
-	Status          *models.TaskStatus `json:"status"`
-	StartDate       *models.Date       `json:"startDate"`
-	EndDate         *models.Date       `json:"endDate"`
-	ProgressPercent *int               `json:"progressPercent"`
-	WeightPercent   *float64           `json:"weightPercent"`
+	SprintID    *uuid.UUID `json:"sprintId"`
+	Title       *string    `json:"title"`
+	Description *string    `json:"description"`
+	AssigneeID  *uuid.UUID `json:"assigneeId"`
+	// MilestoneID — не передано (Set == false) — не менять, null — отвязать
+	// задачу от вехи, значение — привязать к вехе (см. Nullable).
+	MilestoneID     Nullable[uuid.UUID] `json:"milestoneId"`
+	Status          *models.TaskStatus  `json:"status"`
+	StartDate       *models.Date        `json:"startDate"`
+	EndDate         *models.Date        `json:"endDate"`
+	ProgressPercent *int                `json:"progressPercent"`
+	WeightPercent   *float64            `json:"weightPercent"`
 }
 
 // PATCH /tasks/{taskId} — редактировать задачу (сроки, статус, ответственный, прогресс и т.д.).
@@ -252,6 +262,8 @@ func (a *API) tasksUpdate(c *fiber.Ctx) error {
 		Title:           body.Title,
 		Description:     body.Description,
 		AssigneeID:      body.AssigneeID,
+		MilestoneID:     body.MilestoneID.Value,
+		MilestoneIDSet:  body.MilestoneID.Set,
 		Status:          body.Status,
 		StartDate:       body.StartDate,
 		EndDate:         body.EndDate,

@@ -23,10 +23,19 @@ type milestoneRequest struct {
 	Code        string      `json:"code"`
 	Name        string      `json:"name"`
 	PlannedDate models.Date `json:"plannedDate"`
+	// ActualDate — только для PATCH: не передано — не менять, null — снять
+	// отметку о достижении, значение — отметить веху достигнутой (см. Nullable).
+	ActualDate Nullable[models.Date] `json:"actualDate"`
 }
 
 func (r milestoneRequest) toInput() service.MilestoneInput {
-	return service.MilestoneInput{Code: r.Code, Name: r.Name, PlannedDate: r.PlannedDate}
+	return service.MilestoneInput{
+		Code:          r.Code,
+		Name:          r.Name,
+		PlannedDate:   r.PlannedDate,
+		ActualDate:    r.ActualDate.Value,
+		ActualDateSet: r.ActualDate.Set,
+	}
 }
 
 // GET /projects/{projectId}/milestones — все вехи проекта в хронологическом порядке.
@@ -73,7 +82,8 @@ func (a *API) milestonesCreate(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(newMilestoneDTO(milestone))
 }
 
-// PATCH /milestones/{milestoneId} — изменить название, код или плановую дату вехи.
+// PATCH /milestones/{milestoneId} — изменить название, код, плановую дату вехи
+// или отметить её достигнутой через actualDate (null снимает отметку).
 // Body: MilestoneCreateRequest. 200 -> Milestone.
 func (a *API) milestonesUpdate(c *fiber.Ctx) error {
 	milestoneID, err := pathUUID(c, "milestoneId")

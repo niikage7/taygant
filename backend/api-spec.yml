@@ -481,6 +481,10 @@ paths:
           in: query
           description: Ограничить выборку задачами конкретного ответственного.
           schema: { type: string, format: uuid }
+        - name: milestoneId
+          in: query
+          description: Ограничить выборку задачами, привязанными к конкретной вехе.
+          schema: { type: string, format: uuid }
         - name: status
           in: query
           description: Фильтр по статусу задачи.
@@ -1247,10 +1251,20 @@ components:
           type: integer
           nullable: true
           description: Прогнозируемое отставание от плановой даты, дней.
+        tasksTotal:
+          type: integer
+          description: Число задач, привязанных к вехе (Task.milestoneId).
+        tasksDone:
+          type: integer
+          description: Число привязанных к вехе задач в статусе done.
 
     MilestoneCreateRequest:
       type: object
-      description: Данные для создания или изменения контрольной точки.
+      description: >
+        Данные для создания или изменения контрольной точки. actualDate
+        учитывается только при изменении (PATCH): отсутствие поля в теле
+        запроса не меняет фактическую дату, null снимает отметку о
+        достижении, значение — отмечает веху достигнутой.
       required: [name, plannedDate]
       properties:
         code:
@@ -1263,6 +1277,14 @@ components:
           type: string
           format: date
           description: Плановая дата достижения контрольной точки.
+        actualDate:
+          type: string
+          format: date
+          nullable: true
+          description: >
+            Фактическая дата достижения — только для PATCH. Поле не передано —
+            не менять, null — снять отметку о достижении, значение — отметить
+            веху достигнутой.
 
     Task:
       type: object
@@ -1286,6 +1308,11 @@ components:
           format: uuid
           nullable: true
           description: Идентификатор родительской задачи для построения иерархии WBS (подзадачи).
+        milestoneId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Идентификатор контрольной точки (вехи), к которой ведёт задача.
         code:
           type: string
           description: Короткий читаемый код задачи.
@@ -1400,6 +1427,10 @@ components:
           type: string
           format: uuid
           description: Идентификатор родительской задачи (для создания подзадачи в WBS).
+        milestoneId:
+          type: string
+          format: uuid
+          description: Идентификатор контрольной точки (вехи), к которой ведёт задача.
         title:
           type: string
           description: Название задачи.
@@ -1449,12 +1480,22 @@ components:
 
     TaskUpdateRequest:
       type: object
-      description: Набор полей задачи, доступных для частичного обновления (PATCH).
+      description: >
+        Набор полей задачи, доступных для частичного обновления (PATCH).
+        milestoneId различает отсутствие поля (не менять) от null (отвязать
+        от вехи) — как и actualDate у MilestoneCreateRequest.
       properties:
         sprintId:
           type: string
           format: uuid
           description: Новый спринт задачи.
+        milestoneId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Новая контрольная точка задачи. Поле не передано — не менять,
+            null — отвязать от вехи, значение — привязать к вехе.
         title:
           type: string
           description: Новое название задачи.

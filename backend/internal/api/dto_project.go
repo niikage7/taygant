@@ -121,6 +121,8 @@ type milestoneDTO struct {
 	ActualDate  *models.Date           `json:"actualDate"`
 	Status      models.MilestoneStatus `json:"status"`
 	RiskDays    *int                   `json:"riskDays"`
+	TasksTotal  int                    `json:"tasksTotal"`
+	TasksDone   int                    `json:"tasksDone"`
 }
 
 func newMilestoneDTO(m models.Milestone) milestoneDTO {
@@ -133,6 +135,8 @@ func newMilestoneDTO(m models.Milestone) milestoneDTO {
 		ActualDate:  m.ActualDate,
 		Status:      m.Status,
 		RiskDays:    m.RiskDays,
+		TasksTotal:  m.TasksTotal,
+		TasksDone:   m.TasksDone,
 	}
 }
 

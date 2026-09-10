@@ -26,6 +26,12 @@ type Milestone struct {
 	// RiskDays — не хранится: пересчитывается при каждом чтении из PlannedDate
 	// и текущей даты, как и Status. gorm:"-" исключает поле из миграции и запросов.
 	RiskDays *int `gorm:"-"`
+
+	// TasksTotal/TasksDone — сколько задач ведёт к вехе и сколько из них
+	// завершено. Не хранится: считается сервисом по Task.MilestoneID при
+	// каждом чтении списка вех, как и RiskDays.
+	TasksTotal int `gorm:"-"`
+	TasksDone  int `gorm:"-"`
 }
 
 // TableName фиксирует имя таблицы.
