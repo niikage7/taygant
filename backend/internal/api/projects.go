@@ -107,16 +107,21 @@ func (a *API) projectsGet(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	m, err := a.requireMember(c, projectID)
-	if err != nil {
+	if _, err := a.requireMember(c, projectID); err != nil {
 		return err
 	}
 
-	metrics, err := a.metricsFor(c, m.Project)
+	// access.Load не подгружает CreatedBy (ему хватает Project для проверки прав),
+	// поэтому автора для ответа берём отдельно через сервис.
+	project, err := a.projects.Get(c.Context(), projectID)
 	if err != nil {
 		return fail(err)
 	}
-	return c.JSON(newProjectDTO(m.Project, metrics))
+	metrics, err := a.metricsFor(c, project)
+	if err != nil {
+		return fail(err)
+	}
+	return c.JSON(newProjectDTO(project, metrics))
 }
 
 // projectUpdateRequest — тело PATCH /projects/{projectId}.
