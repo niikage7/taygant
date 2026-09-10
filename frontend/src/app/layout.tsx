@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ru" className="h-full antialiased">
+    <html lang="ru" className="antialiased">
       <head>
         {/*
           Шрифты объявлены в globals.css (@font-face поверх /public/fonts).
@@ -33,7 +33,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           crossOrigin="anonymous"
         />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      {/*
+        min-h-screen, а не min-h-full: процент от высоты родителя требует, чтобы
+        у <html> была задана высота, и на страницах длиннее экрана (например,
+        пользовательское соглашение) это ломает прокрутку.
+      */}
+      <body className="flex min-h-screen flex-col">{children}</body>
     </html>
   );
 }
