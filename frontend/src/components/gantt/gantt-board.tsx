@@ -4,6 +4,7 @@ import { CircleAlert, Plus, TriangleAlert, User, Waypoints, X } from "lucide-rea
 import { useState } from "react";
 
 import { CreateTaskDialog } from "@/components/gantt/create-task-dialog";
+import { buildGanttRows } from "@/lib/gantt-rows";
 import { TaskTable } from "@/components/gantt/task-table";
 import { Timeline } from "@/components/gantt/timeline";
 import { Segmented } from "@/components/ui/segmented";
@@ -42,6 +43,15 @@ export function GanttBoard({
   const [scale, setScale] = useState<TimeScale>("weeks");
   const [filters, setFilters] = useState<Filter[]>([]);
   const [alertVisible, setAlertVisible] = useState(true);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+
+  const toggleCollapse = (milestoneId: string) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(milestoneId)) next.delete(milestoneId);
+      else next.add(milestoneId);
+      return next;
+    });
 
   const toggleFilter = (filter: Filter) =>
     setFilters((current) =>
@@ -54,6 +64,11 @@ export function GanttBoard({
     if (filters.includes("risks") && task.planVsActualDeviationDays >= 0) return false;
     return true;
   });
+
+  // Порядок строк считаем один раз: реестр и таймлайн обязаны совпадать
+  // построчно, иначе отрезки уедут относительно названий.
+  const rows = buildGanttRows(visibleTasks, dependencies, collapsed);
+  const visibleInOrder = rows.map((row) => row.task);
 
   const criticalTask = tasks.find(
     (task) => task.isCriticalPath && task.planVsActualDeviationDays < 0,
@@ -121,13 +136,15 @@ export function GanttBoard({
       <div className="overflow-hidden rounded-card bg-surface shadow-card">
         <div className="flex max-h-[540px] overflow-y-auto">
           <TaskTable
-            tasks={visibleTasks}
+            rows={rows}
             allTasks={tasks}
             dependencies={dependencies}
+            collapsed={collapsed}
+            onToggleCollapse={toggleCollapse}
             highlightCriticalPath={project.highlightCriticalPath}
           />
           <Timeline
-            tasks={visibleTasks}
+            tasks={visibleInOrder}
             dependencies={dependencies}
             milestones={milestones}
             scale={scale}

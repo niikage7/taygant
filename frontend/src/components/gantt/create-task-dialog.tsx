@@ -2,7 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { addDays, format } from "date-fns";
-import { Plus, X } from "lucide-react";
+import { Diamond, ListTodo, Plus, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -15,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateTask, useProjectMembers } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
+import { cn } from "@/lib/utils";
 import type { DependencyType, Task } from "@/types";
 
 const toIso = (date: Date) => format(date, "yyyy-MM-dd");
@@ -49,7 +50,7 @@ export function CreateTaskDialog({
   const [startDate, setStartDate] = useState(() => toIso(new Date()));
   const [endDate, setEndDate] = useState(() => toIso(addDays(new Date(), 5)));
   const [isMilestone, setIsMilestone] = useState(false);
-  const [predecessorId, setPredecessorId] = useState("");
+  const [predecessorIds, setPredecessorIds] = useState<string[]>([]);
   const [dependencyType, setDependencyType] = useState<DependencyType>("FS");
 
   const members = useProjectMembers(projectId);
@@ -62,8 +63,7 @@ export function CreateTaskDialog({
     setTitle("");
     setDescription("");
     setAssigneeId("");
-    setPredecessorId("");
-    setIsMilestone(false);
+    setPredecessorIds([]);
   }
 
   function submit() {
@@ -77,9 +77,16 @@ export function CreateTaskDialog({
         // У вехи нулевая длительность — конец совпадает с началом.
         endDate: isMilestone ? startDate : endDate,
         isMilestone,
-        predecessors: predecessorId
-          ? [{ taskId: predecessorId, type: dependencyType, lagDays: 0 }]
-          : undefined,
+        // Бэкенд принимает связи массивом, поэтому веху можно сразу привязать
+        // ко всем задачам, которые к ней ведут, а не создавать связи по одной.
+        predecessors:
+          predecessorIds.length > 0
+            ? predecessorIds.map((taskId) => ({
+                taskId,
+                type: dependencyType,
+                lagDays: 0,
+              }))
+            : undefined,
       },
       {
         onSuccess: () => {
@@ -127,6 +134,27 @@ export function CreateTaskDialog({
               submit();
             }}
           >
+            <div
+              role="radiogroup"
+              aria-label="Тип элемента графика"
+              className="grid grid-cols-2 gap-2"
+            >
+              <TypeOption
+                active={!isMilestone}
+                onClick={() => setIsMilestone(false)}
+                icon={<ListTodo className="size-4" />}
+                title="Задача"
+                hint="Работа с длительностью и прогрессом"
+              />
+              <TypeOption
+                active={isMilestone}
+                onClick={() => setIsMilestone(true)}
+                icon={<Diamond className="size-4" />}
+                title="Веха"
+                hint="Событие-контроль нулевой длительности"
+              />
+            </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="task-title">
                 Название <span className="text-danger">*</span>
@@ -167,22 +195,6 @@ export function CreateTaskDialog({
               </Select>
             </div>
 
-            <label className="flex cursor-pointer items-start gap-2.5 rounded-control bg-surface-subtle p-3">
-              <Checkbox
-                checked={isMilestone}
-                onCheckedChange={(checked) => setIsMilestone(checked === true)}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="block text-[13px] font-medium text-ink">
-                  Контрольная точка (веха)
-                </span>
-                <span className="mt-0.5 block text-xs text-ink-muted">
-                  Событие с нулевой длительностью — дата окончания не нужна.
-                </span>
-              </span>
-            </label>
-
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="task-start">Начало</Label>
@@ -203,30 +215,57 @@ export function CreateTaskDialog({
             </div>
 
             {projectTasks.length > 0 ? (
-              <div className="grid grid-cols-[1fr_auto] gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="task-predecessor">Предшественник</Label>
-                  <Select
-                    id="task-predecessor"
-                    value={predecessorId}
-                    onChange={(event) => setPredecessorId(event.target.value)}
-                  >
-                    <option value="">Без связи</option>
-                    {projectTasks.map((task) => (
-                      <option key={task.id} value={task.id}>
-                        #{task.wbsNumber} {task.title}
-                      </option>
-                    ))}
-                  </Select>
+              <div className="space-y-2">
+                <div className="flex items-baseline justify-between gap-3">
+                  <Label>
+                    {isMilestone
+                      ? "Задачи, ведущие к вехе"
+                      : "Предшественники"}
+                  </Label>
+                  <span className="text-xs text-ink-faint">
+                    {predecessorIds.length > 0
+                      ? `выбрано: ${predecessorIds.length}`
+                      : "можно несколько"}
+                  </span>
                 </div>
-                {predecessorId ? (
+
+                <ul className="max-h-44 space-y-1 overflow-y-auto rounded-control border border-line p-2">
+                  {projectTasks.map((task) => {
+                    const checked = predecessorIds.includes(task.id);
+                    return (
+                      <li key={task.id}>
+                        <label className="flex cursor-pointer items-center gap-2.5 rounded-control px-2 py-1.5 hover:bg-surface-muted">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(next) =>
+                              setPredecessorIds((current) =>
+                                next === true
+                                  ? [...current, task.id]
+                                  : current.filter((id) => id !== task.id),
+                              )
+                            }
+                          />
+                          <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
+                            <span className="font-mono text-ink-faint">
+                              #{task.wbsNumber}
+                            </span>{" "}
+                            {task.title}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                {predecessorIds.length > 0 ? (
                   <div className="space-y-1.5">
-                    <Label htmlFor="task-dep-type">Тип</Label>
+                    <Label htmlFor="task-dep-type">Тип связи</Label>
                     <Select
                       id="task-dep-type"
                       value={dependencyType}
-                      onChange={(event) => setDependencyType(event.target.value as DependencyType)}
-                      className="w-44"
+                      onChange={(event) =>
+                        setDependencyType(event.target.value as DependencyType)
+                      }
                     >
                       {TYPE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -264,5 +303,47 @@ export function CreateTaskDialog({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+function TypeOption({
+  active,
+  onClick,
+  icon,
+  title,
+  hint,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  title: string;
+  hint: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={cn(
+        "flex items-start gap-2.5 rounded-control border p-3 text-left transition-colors focus-visible:focus-ring",
+        active
+          ? "border-brand bg-brand-tint"
+          : "border-line bg-surface hover:bg-surface-subtle",
+      )}
+    >
+      <span className={active ? "mt-0.5 text-brand" : "mt-0.5 text-ink-faint"}>{icon}</span>
+      <span className="min-w-0">
+        <span
+          className={cn(
+            "block text-[13px] font-semibold",
+            active ? "text-brand" : "text-ink",
+          )}
+        >
+          {title}
+        </span>
+        <span className="mt-0.5 block text-xs text-ink-muted">{hint}</span>
+      </span>
+    </button>
   );
 }

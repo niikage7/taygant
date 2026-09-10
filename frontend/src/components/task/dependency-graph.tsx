@@ -1,9 +1,11 @@
 "use client";
 
-import { ArrowLeftToLine, ArrowRightFromLine, Trash2 } from "lucide-react";
+import { ArrowLeftToLine, ArrowRightFromLine, Link2, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import { AddDependencyDialog } from "@/components/task/add-dependency-dialog";
+import { LinkTasksDialog } from "@/components/task/link-tasks-dialog";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDeleteDependency } from "@/data/queries";
@@ -22,12 +24,15 @@ const DEPENDENCY_LABEL: Record<DependencyType, string> = {
 export function DependencyGraph({
   taskId,
   taskNumber,
+  isMilestone,
   predecessors,
   successors,
   projectTasks,
 }: {
   taskId: string;
   taskNumber: string;
+  /** У вехи входящие связи — это список работ, которые к ней ведут. */
+  isMilestone: boolean;
   predecessors: TaskDependency[];
   successors: TaskDependency[];
   /** Все задачи проекта — источник выбора для новой связи и подписей номеров. */
@@ -48,18 +53,35 @@ export function DependencyGraph({
             Определяет динамический расчёт сроков по алгоритму Critical Path Method (CPM)
           </p>
         </div>
-        <AddDependencyDialog
-          taskId={taskId}
-          candidates={projectTasks}
-          linkedTaskIds={linkedTaskIds}
-        />
+        <span className="flex items-center gap-2">
+          {/* У вехи привязка задач — основной сценарий, поэтому отдельная
+              кнопка с множественным выбором вместо связи по одной. */}
+          {isMilestone ? (
+            <LinkTasksDialog
+              taskId={taskId}
+              candidates={projectTasks.filter((task) => !task.isMilestone)}
+              linkedTaskIds={linkedTaskIds}
+              trigger={
+                <Button size="sm">
+                  <Link2 />
+                  Привязать задачи
+                </Button>
+              }
+            />
+          ) : null}
+          <AddDependencyDialog
+            taskId={taskId}
+            candidates={projectTasks}
+            linkedTaskIds={linkedTaskIds}
+          />
+        </span>
       </CardHeader>
 
       <CardBody>
         <div className="grid gap-3 lg:grid-cols-2">
           <DependencyColumn
             icon={<ArrowLeftToLine className="size-3.5" />}
-            title="Входящие связи (предшественники)"
+            title={isMilestone ? "Задачи, ведущие к вехе" : "Входящие связи (предшественники)"}
             items={predecessors}
             relatedIdOf={(item) => item.predecessorTaskId}
             relatedTitleOf={(item) => item.predecessorTitle}

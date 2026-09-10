@@ -189,6 +189,7 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
               <DependencyGraph
                 taskId={taskId}
                 taskNumber={detail.wbsNumber ?? ""}
+            isMilestone={detail.isMilestone}
                 predecessors={detail.predecessors}
                 successors={detail.successors}
                 projectTasks={projectTasks.data ?? []}

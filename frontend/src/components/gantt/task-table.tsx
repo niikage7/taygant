@@ -1,29 +1,41 @@
 "use client";
 
-import { CircleCheck, CircleDot, Circle, Flag, Gem } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Circle,
+  CircleCheck,
+  CircleDot,
+  Flag,
+} from "lucide-react";
 import Link from "next/link";
 
 import { ROW_HEIGHT } from "@/components/gantt/timeline";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { formatDayMonth } from "@/lib/format";
+import { formatDayMonth, plural } from "@/lib/format";
 import { TASK_STATUS_META } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
+import type { GanttRow } from "@/lib/gantt-rows";
 import type { Task, TaskDependency } from "@/types";
 
 /** Левая часть диаграммы — реестр задач, построчно совпадающий с таймлайном. */
 export function TaskTable({
-  tasks,
+  rows,
   allTasks,
   dependencies,
+  collapsed,
+  onToggleCollapse,
   highlightCriticalPath,
 }: {
-  /** Отображаемые строки (после фильтров). */
-  tasks: Task[];
+  /** Готовые строки в порядке отрисовки — тот же массив получает таймлайн. */
+  rows: GanttRow[];
   /** Полный список задач проекта — нужен, чтобы найти номер предшественника,
    *  даже когда сам предшественник отфильтрован и в таблице не показан. */
   allTasks: Task[];
   dependencies: TaskDependency[];
+  collapsed: ReadonlySet<string>;
+  onToggleCollapse: (milestoneId: string) => void;
   highlightCriticalPath: boolean;
 }) {
   // Критический путь проходит через несколько задач, но в макете красным
@@ -36,6 +48,17 @@ export function TaskTable({
     dependencies.map((d) => [d.successorTaskId, d.predecessorTaskId]),
   );
   const wbsOf = new Map(allTasks.map((task) => [task.id, task.wbsNumber]));
+
+  // Сколько задач ведёт к вехе. Привязки «задача → веха» в модели нет, поэтому
+  // считаем по входящим связям: это единственный способ выразить такую
+  // принадлежность на текущей схеме (см. docs/backend-request-milestones.md).
+  const feedingCount = new Map<string, number>();
+  for (const dependency of dependencies) {
+    feedingCount.set(
+      dependency.successorTaskId,
+      (feedingCount.get(dependency.successorTaskId) ?? 0) + 1,
+    );
+  }
 
   return (
     <div className="w-[600px] shrink-0 border-r border-line">
@@ -50,18 +73,70 @@ export function TaskTable({
       </div>
 
       <ul>
-        {tasks.map((task) => {
+        {rows.map(({ task, depth, childCount }) => {
           const critical = isAtRisk(task) && !task.isMilestone;
           const status = TASK_STATUS_META[task.status];
           const predecessor = predecessorOf.get(task.id);
           const StatusIcon =
-            task.isMilestone
-              ? Gem
-              : task.status === "done"
-                ? CircleCheck
-                : task.status === "in_progress"
-                  ? CircleDot
-                  : Circle;
+            task.status === "done"
+              ? CircleCheck
+              : task.status === "in_progress"
+                ? CircleDot
+                : Circle;
+
+          if (task.isMilestone) {
+            // Веха — не работа, а точка контроля и заголовок группы: полоса во
+            // всю ширину, без колонок длительности и статуса, которые к ней
+            // неприменимы. Иначе она читается как ещё одна строка задачи.
+            const isCollapsed = collapsed.has(task.id);
+            return (
+              <li
+                key={task.id}
+                className="flex items-center gap-2 border-y border-accent/30 bg-accent-tint px-3"
+                style={{ height: ROW_HEIGHT }}
+              >
+                <button
+                  type="button"
+                  onClick={() => onToggleCollapse(task.id)}
+                  disabled={childCount === 0}
+                  aria-expanded={!isCollapsed}
+                  aria-label={
+                    isCollapsed ? `Развернуть веху «${task.title}»` : `Свернуть веху «${task.title}»`
+                  }
+                  className="flex size-5 shrink-0 items-center justify-center rounded-control text-accent transition-colors hover:bg-accent/10 focus-visible:focus-ring disabled:opacity-30"
+                >
+                  {childCount === 0 ? (
+                    <span className="size-1.5 rounded-full bg-current" />
+                  ) : isCollapsed ? (
+                    <ChevronRight className="size-4" />
+                  ) : (
+                    <ChevronDown className="size-4" />
+                  )}
+                </button>
+
+                <span className="size-3 shrink-0 rotate-45 rounded-[2px] bg-accent" />
+
+                <Link
+                  href={`/tasks/${task.id}`}
+                  className="min-w-0 flex-1 rounded-control focus-visible:focus-ring"
+                >
+                  <span className="truncate text-[13px] font-semibold text-accent">
+                    {task.title}
+                  </span>
+                </Link>
+
+                <Badge tone={childCount > 0 ? "accent" : "neutral"} size="sm">
+                  {childCount > 0
+                    ? `${childCount} ${plural(childCount, ["задача", "задачи", "задач"])}`
+                    : "нет задач"}
+                </Badge>
+
+                <span className="shrink-0 font-mono text-[11px] text-accent">
+                  {formatDayMonth(task.startDate)}
+                </span>
+              </li>
+            );
+          }
 
           return (
             <li
@@ -72,6 +147,13 @@ export function TaskTable({
               )}
               style={{ height: ROW_HEIGHT }}
             >
+              {/* Вложенность показываем отступом: задача читается как часть вехи. */}
+              {depth > 0 ? (
+                <span
+                  aria-hidden
+                  className="mr-1 h-full w-4 shrink-0 border-l border-accent/40"
+                />
+              ) : null}
               <span
                 className={cn(
                   "w-8 shrink-0 font-mono text-xs",
@@ -91,21 +173,16 @@ export function TaskTable({
                   <StatusIcon
                     className={cn(
                       "size-4 shrink-0",
-                      task.isMilestone && "text-brand",
-                      !task.isMilestone && task.status === "done" && "text-success",
-                      !task.isMilestone && task.status === "in_progress" && "text-warning",
-                      !task.isMilestone && task.status === "planned" && "text-ink-faint",
+                      task.status === "done" && "text-success",
+                      task.status === "in_progress" && "text-warning",
+                      task.status === "planned" && "text-ink-faint",
                     )}
                   />
                 )}
                 <span
                   className={cn(
                     "truncate text-[13px]",
-                    critical
-                      ? "font-semibold text-danger"
-                      : task.isMilestone
-                        ? "font-semibold text-brand"
-                        : "text-ink",
+                    critical ? "font-semibold text-danger" : "text-ink",
                   )}
                 >
                   {task.title}
@@ -129,14 +206,8 @@ export function TaskTable({
                   critical ? "text-danger" : "text-ink-muted",
                 )}
               >
-                {task.isMilestone ? (
-                  formatDayMonth(task.startDate)
-                ) : (
-                  <>
-                    {formatDayMonth(task.startDate)} –<br />
-                    {formatDayMonth(task.endDate)}
-                  </>
-                )}
+                {formatDayMonth(task.startDate)} –<br />
+                {formatDayMonth(task.endDate)}
               </span>
 
               <span className="w-10 shrink-0 text-right font-mono text-xs text-ink-muted">
@@ -144,9 +215,7 @@ export function TaskTable({
               </span>
 
               <span className="w-24 shrink-0 pl-3">
-                {task.isMilestone ? (
-                  <Badge tone="brand" size="sm">Веха</Badge>
-                ) : critical ? (
+                {critical ? (
                   <Badge tone="danger" size="sm" dot>Крит. путь</Badge>
                 ) : (
                   <Badge tone={status.tone} size="sm" dot={task.status !== "planned"}>
