@@ -24,6 +24,8 @@ export function ProjectSwitcher({
   onSelect: (projectId: string) => void;
 }) {
   const current = projects.find((project) => project.id === currentProjectId);
+  const progress = current?.progressPercent ?? 0;
+  const health = current?.healthIndex ?? 0;
 
   const summary = (
     <>
@@ -32,14 +34,18 @@ export function ProjectSwitcher({
           {current?.name ?? "Проект не выбран"}
         </span>
         <span className="shrink-0 text-xs font-bold text-brand">
-          {current ? `${Math.round(current.healthIndex)}%` : "—"}
+          {current ? `${Math.round(progress)}%` : "—"}
         </span>
       </div>
       <Progress
-        value={current?.healthIndex ?? 0}
+        value={progress}
         className="mt-2 h-1.5"
-        label="Индекс здоровья проекта"
+        label={`Прогресс проекта: ${Math.round(progress)}%`}
       />
+      <div className="mt-1.5 flex items-baseline justify-between gap-2 text-[11px] text-ink-faint">
+        <span className="tracking-wider uppercase">Прогресс</span>
+        {current ? <span>Здоровье: {Math.round(health)}%</span> : null}
+      </div>
       {current && current.criticalRisksCount > 0 ? (
         <p className="mt-2 flex items-center gap-1.5 text-xs text-danger">
           <TriangleAlert className="size-3.5 shrink-0" />
