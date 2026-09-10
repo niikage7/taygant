@@ -1,5 +1,5 @@
 import { CircleCheck, CircleDashed, Flag, Hourglass } from "lucide-react";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDayMonth } from "@/lib/format";
@@ -16,8 +16,21 @@ const STATUS_STYLE: Record<
   final: { icon: Flag, tile: "bg-surface-subtle", code: "text-ink-faint", icon_: "text-brand" },
 };
 
-/** Полоса ближайших контрольных точек проекта. */
-export function MilestonesStrip({ milestones }: { milestones: Milestone[] }) {
+/**
+ * Полоса ближайших контрольных точек.
+ *
+ * Показывает `nearestMilestones` из дашборда — он отфильтрован от завершённых и
+ * обрезан до трёх. Полный список и управление живут в диалоге, который
+ * открывается из `action`.
+ */
+export function MilestonesStrip({
+  milestones,
+  action,
+}: {
+  milestones: Milestone[];
+  /** Кнопка управления вехами в заголовке карточки. */
+  action?: ReactNode;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -25,8 +38,14 @@ export function MilestonesStrip({ milestones }: { milestones: Milestone[] }) {
           <Flag className="size-4 text-brand" />
           Ближайшие контрольные точки (Milestones)
         </CardTitle>
+        {action}
       </CardHeader>
       <CardBody>
+        {milestones.length === 0 ? (
+          <p className="py-6 text-center text-[13px] text-ink-muted">
+            Предстоящих контрольных точек нет.
+          </p>
+        ) : (
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {milestones.map((milestone) => {
             const style = STATUS_STYLE[milestone.status];
@@ -66,6 +85,7 @@ export function MilestonesStrip({ milestones }: { milestones: Milestone[] }) {
             );
           })}
         </ul>
+        )}
       </CardBody>
     </Card>
   );
