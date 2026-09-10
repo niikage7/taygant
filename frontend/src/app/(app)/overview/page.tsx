@@ -1,34 +1,53 @@
 "use client";
 
-import { Bell, FileBarChart, GitBranch } from "lucide-react";
+import { Bell, GitBranch, PlugZap } from "lucide-react";
 
-import { DemoDataNotice, EmptyProjects, PageError } from "@/components/app/page-state";
+import {
+  EmptyProjects,
+  PageError,
+  PageLoading,
+} from "@/components/app/page-state";
 import { AttentionTasks } from "@/components/dashboard/attention-tasks";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { MilestonesStrip } from "@/components/dashboard/milestones-strip";
-import { RiskCard } from "@/components/dashboard/risk-card";
-import { WorkloadCard } from "@/components/dashboard/workload-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { demoDashboard } from "@/data/demo";
-import { useCurrentProjectId, useProject } from "@/data/queries";
+import { Card, CardBody } from "@/components/ui/card";
+import {
+  useCurrentProjectId,
+  useMilestones,
+  useProject,
+  useTasks,
+} from "@/data/queries";
+import { buildDashboardMetrics } from "@/lib/dashboard-metrics";
 
 /**
- * Дашборд остаётся на демо-данных: оба его источника —
- * `GET /projects/{id}/dashboard` и `GET /projects/{id}/workload` — на бэкенде
- * пока возвращают 501. Шапка при этом уже берёт реальный проект, чтобы название
- * и код не расходились с остальными экранами.
+ * Обзор и аналитика.
+ *
+ * Эндпоинт `/projects/{id}/dashboard` пока возвращает 501, поэтому показатели
+ * считаются на клиенте из задач, вех и карточки проекта — все три источника
+ * реализованы. Блоки, у которых источника нет вовсе (риски, скорость команды,
+ * загрузка в часах), не заполняются выдуманными числами, а честно помечены
+ * как ожидающие бэкенд.
  */
 export default function OverviewPage() {
   const { projectId, isEmpty, error } = useCurrentProjectId();
   const project = useProject(projectId);
+  const tasks = useTasks(projectId);
+  const milestones = useMilestones(projectId);
 
   if (error) return <PageError error={error} />;
   if (isEmpty) return <EmptyProjects />;
+  if (project.error) return <PageError error={project.error} />;
+  if (tasks.error) return <PageError error={tasks.error} />;
+  if (!project.data || !tasks.data) return <PageLoading />;
 
-  const data = demoDashboard;
-  const code = project.data?.code ?? data.project.code;
-  const phase = project.data?.phase ?? data.project.phase;
+  const metrics = buildDashboardMetrics({
+    project: project.data,
+    tasks: tasks.data,
+    milestones: milestones.data ?? [],
+    today: new Date(),
+  });
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-4">
@@ -36,11 +55,11 @@ export default function OverviewPage() {
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs tracking-wide text-ink-faint uppercase">
-              Проект #{code}
+              Проект #{project.data.code}
             </span>
-            {phase ? (
+            {project.data.phase ? (
               <Badge tone="brand" size="sm" className="font-semibold tracking-wide uppercase">
-                {phase}
+                {project.data.phase}
               </Badge>
             ) : null}
           </p>
@@ -58,32 +77,30 @@ export default function OverviewPage() {
             <Bell />
             Уведомить исполнителей
           </Button>
-          <Button>
-            <FileBarChart />
-            Отчёт для жюри ТПУ
-          </Button>
         </div>
       </div>
 
-      <DemoDataNotice>
-        Показатели демонстрационные: эндпоинты{" "}
-        <code className="font-mono">/dashboard</code> и{" "}
-        <code className="font-mono">/workload</code> на бэкенде ещё возвращают 501.
-        Экран переключится на реальные данные без правок вёрстки.
-      </DemoDataNotice>
+      <KpiCards metrics={metrics} project={project.data} />
 
-      <KpiCards data={data} />
-      <MilestonesStrip milestones={data.nearestMilestones} />
+      {milestones.data && milestones.data.length > 0 ? (
+        <MilestonesStrip milestones={milestones.data} />
+      ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <div className="space-y-4">
-          {data.risks.map((risk) => (
-            <RiskCard key={risk.title} risk={risk} />
-          ))}
-          <AttentionTasks tasks={data.attentionTasks} />
-        </div>
-        <WorkloadCard workload={data.teamWorkload} />
-      </div>
+      <AttentionTasks tasks={metrics.laggingTasks} />
+
+      <Card>
+        <CardBody className="flex items-start gap-3 py-4">
+          <PlugZap className="mt-0.5 size-4 shrink-0 text-warning" />
+          <p className="text-[13px] text-ink-muted">
+            <span className="font-semibold text-ink">
+              Риски, скорость команды и загрузка по часам появятся здесь
+            </span>{" "}
+            после реализации <code className="font-mono">/projects/{"{id}"}/dashboard</code>{" "}
+            и <code className="font-mono">/workload</code> — сейчас эти эндпоинты
+            возвращают 501. Вёрстка блоков готова и подключится без изменений экрана.
+          </p>
+        </CardBody>
+      </Card>
     </div>
   );
 }

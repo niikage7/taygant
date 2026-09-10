@@ -1,3 +1,10 @@
+/**
+ * Активные риски проекта.
+ *
+ * ⚠️ Пока не подключён: риски приходят из `GET /projects/{id}/dashboard`,
+ * который возвращает 501. Компонент готов и ждёт эндпоинт — см. заметку
+ * на экране «Обзор и Аналитика».
+ */
 import { TriangleAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";

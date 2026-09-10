@@ -1,3 +1,9 @@
+/**
+ * Каскадная диаграмма what-if.
+ *
+ * ⚠️ Пока не подключён: данные приходят из `POST /tasks/{id}/simulate-shift`
+ * и `/apply-shift`, оба возвращают 501. Компонент готов и ждёт эндпоинты.
+ */
 "use client";
 
 import { ArrowDown, ArrowRight, CalendarX2, Info, Shield, Zap } from "lucide-react";

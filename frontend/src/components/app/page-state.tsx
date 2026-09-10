@@ -2,7 +2,6 @@
 
 import { CircleAlert, Inbox, LoaderCircle, PlugZap } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
@@ -66,19 +65,5 @@ export function EmptyProjects() {
         </Button>
       </CardBody>
     </Card>
-  );
-}
-
-/**
- * Плашка «данные демонстрационные». Нужна на экранах, где эндпоинт возвращает
- * 501 и содержимое приходит из фикстур: без явной пометки такие цифры легко
- * принять за настоящие метрики проекта.
- */
-export function DemoDataNotice({ children }: { children: ReactNode }) {
-  return (
-    <p className="flex items-start gap-2 rounded-control bg-warning-tint px-3 py-2 text-[13px] text-warning-ink">
-      <PlugZap className="mt-px size-4 shrink-0" />
-      <span>{children}</span>
-    </p>
   );
 }

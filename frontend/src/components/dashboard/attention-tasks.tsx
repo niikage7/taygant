@@ -5,10 +5,14 @@ import { Avatar } from "@/components/ui/avatar";
 import { Card, CardBody, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatSigned, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { AttentionTask } from "@/types";
+import type { Task } from "@/types";
 
 /** Реестр задач с отклонением от плана. */
-export function AttentionTasks({ tasks }: { tasks: AttentionTask[] }) {
+export function AttentionTasks({
+  tasks,
+}: {
+  tasks: { task: Task; deviationDays: number }[];
+}) {
   return (
     <Card className="flex flex-col">
       <CardHeader>
@@ -17,10 +21,15 @@ export function AttentionTasks({ tasks }: { tasks: AttentionTask[] }) {
           Задачи, требующие внимания
         </CardTitle>
         <span className="rounded-control bg-surface-muted px-2 py-1 font-mono text-[11px] text-ink-muted">
-          {tasks.length} задачи в зоне риска
+          {tasks.length} {plural(tasks.length, ["задача", "задачи", "задач"])} в зоне риска
         </span>
       </CardHeader>
       <CardBody className="flex-1 pt-3">
+        {tasks.length === 0 ? (
+          <p className="py-8 text-center text-[13px] text-ink-muted">
+            Отстающих задач нет — проект идёт по плану.
+          </p>
+        ) : (
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-line text-[11px] tracking-wider text-ink-faint uppercase">
@@ -78,6 +87,7 @@ export function AttentionTasks({ tasks }: { tasks: AttentionTask[] }) {
             })}
           </tbody>
         </table>
+        )}
       </CardBody>
       <CardFooter>
         <span className="text-ink-muted">Показаны критические и отстающие позиции</span>
