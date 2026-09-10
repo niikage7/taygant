@@ -34,6 +34,7 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert } from "@/components/ui/alert";
 import { queryKeys } from "@/data/queries";
+import { useCurrentProject } from "@/data/current-project";
 import { toUserMessage } from "@/lib/api-error-message";
 import { formatWeekday, plural } from "@/lib/format";
 import { projectsService } from "@/services";
@@ -74,18 +75,22 @@ export function NewProjectForm({
 
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { selectProject } = useCurrentProject();
 
   const createProject = useMutation({
     mutationFn: (payload: ProjectCreateRequest) => projectsService.create(payload),
     onSuccess: async (project) => {
+      // Созданный проект сразу становится текущим, иначе на экранах остался бы
+      // выбранным прежний проект из localStorage.
+      selectProject(project.id);
       // Список проектов формирует «текущий проект» для всех внутренних экранов,
       // поэтому его нужно перечитать до перехода на диаграмму.
       await queryClient.invalidateQueries({ queryKey: queryKeys.projects });
-      router.push(project.status === "draft" ? "/overview" : "/gantt");
+      router.push("/gantt");
     },
   });
 
-  const submit = (saveAsDraft: boolean) => {
+  const submit = () => {
     if (!requiredFilled) return;
     createProject.mutate({
       name: name.trim(),
@@ -101,7 +106,6 @@ export function NewProjectForm({
         userId: member.userId,
         projectRole: member.projectRole,
       })),
-      saveAsDraft,
     });
   };
 
@@ -119,7 +123,7 @@ export function NewProjectForm({
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
-        submit(false);
+        submit();
       }}
     >
       <div className="min-w-0">
@@ -178,7 +182,7 @@ export function NewProjectForm({
               id="project-customer"
               value={customerOrg}
               onChange={(event) => setCustomerOrg(event.target.value)}
-              placeholder="Например, Институт кибернетики ТПУ"
+              placeholder="Например, Отдел разработки"
               className="mt-1.5"
             />
           </div>
@@ -300,7 +304,7 @@ export function NewProjectForm({
             <div className="min-w-0">
               <p className="text-[13px] font-semibold text-ink">Рабочий календарь проекта</p>
               <p className="mt-0.5 text-xs text-ink-muted">
-                Учитывает производственный календарь РФ и академический график ТПУ
+                Учитывает производственный календарь РФ
               </p>
             </div>
           </div>
@@ -366,14 +370,6 @@ export function NewProjectForm({
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => submit(true)}
-              disabled={createProject.isPending}
-            >
-              Сохранить как черновик
-            </Button>
             <Button type="submit" disabled={!requiredFilled || createProject.isPending}>
               <Flag />
               {createProject.isPending

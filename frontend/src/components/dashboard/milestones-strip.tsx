@@ -23,11 +23,8 @@ export function MilestonesStrip({ milestones }: { milestones: Milestone[] }) {
       <CardHeader>
         <CardTitle>
           <Flag className="size-4 text-brand" />
-          Ближайшие контрольные точки (Milestones) ТПУ
+          Ближайшие контрольные точки (Milestones)
         </CardTitle>
-        <span className="text-xs text-ink-faint">
-          Синхронизировано с графиком ректората
-        </span>
       </CardHeader>
       <CardBody>
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
