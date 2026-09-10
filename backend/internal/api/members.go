@@ -104,7 +104,7 @@ func (a *API) membersUpdate(c *fiber.Ctx) error {
 		return err
 	}
 
-	member, err := a.members.Update(c.Context(), memberID, service.MemberUpdateInput{
+	member, err := a.members.Update(c.Context(), projectID, memberID, service.MemberUpdateInput{
 		ProjectRole: body.ProjectRole,
 		SprintRole:  body.SprintRole,
 		AccessLevel: body.AccessLevel,
@@ -130,7 +130,7 @@ func (a *API) membersDelete(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := a.members.Remove(c.Context(), memberID); err != nil {
+	if err := a.members.Remove(c.Context(), projectID, memberID); err != nil {
 		return fail(err)
 	}
 	return c.SendStatus(fiber.StatusNoContent)

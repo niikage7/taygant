@@ -77,9 +77,11 @@ type MemberUpdateInput struct {
 	AccessLevel *models.AccessLevel
 }
 
-// Update меняет роль и/или уровень доступа участника.
-func (s *Members) Update(ctx context.Context, memberID uuid.UUID, in MemberUpdateInput) (models.ProjectMember, error) {
-	member, err := s.get(ctx, memberID)
+// Update меняет роль и/или уровень доступа участника. memberID ищется строго
+// внутри projectID — иначе участник чужого проекта, случайно совпавший по
+// memberID, можно было бы отредактировать через свой projectId в URL.
+func (s *Members) Update(ctx context.Context, projectID, memberID uuid.UUID, in MemberUpdateInput) (models.ProjectMember, error) {
+	member, err := s.getInProject(ctx, projectID, memberID)
 	if err != nil {
 		return models.ProjectMember{}, err
 	}
@@ -111,9 +113,10 @@ func (s *Members) Update(ctx context.Context, memberID uuid.UUID, in MemberUpdat
 	return s.get(ctx, memberID)
 }
 
-// Remove исключает участника из команды проекта.
-func (s *Members) Remove(ctx context.Context, memberID uuid.UUID) error {
-	member, err := s.get(ctx, memberID)
+// Remove исключает участника из команды проекта. memberID ищется строго
+// внутри projectID — та же защита от подмены проекта в URL, что и в Update.
+func (s *Members) Remove(ctx context.Context, projectID, memberID uuid.UUID) error {
+	member, err := s.getInProject(ctx, projectID, memberID)
 	if err != nil {
 		return err
 	}
@@ -123,7 +126,7 @@ func (s *Members) Remove(ctx context.Context, memberID uuid.UUID) error {
 		}
 	}
 
-	res := s.db.WithContext(ctx).Delete(&models.ProjectMember{}, "id = ?", memberID)
+	res := s.db.WithContext(ctx).Delete(&models.ProjectMember{}, "id = ? AND project_id = ?", memberID, projectID)
 	if res.Error != nil {
 		return fmt.Errorf("удалить участника: %w", res.Error)
 	}
@@ -152,6 +155,21 @@ func (s *Members) ensureNotLastManager(ctx context.Context, projectID, excludeMe
 func (s *Members) get(ctx context.Context, memberID uuid.UUID) (models.ProjectMember, error) {
 	var member models.ProjectMember
 	err := s.db.WithContext(ctx).Preload("User").First(&member, "id = ?", memberID).Error
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return models.ProjectMember{}, ErrNotFound
+	case err != nil:
+		return models.ProjectMember{}, fmt.Errorf("найти участника: %w", err)
+	}
+	return member, nil
+}
+
+// getInProject ищет участника по id И project_id одновременно: без этого
+// пара (свой projectId в URL, чужой memberID) успешно находила бы участника
+// другого проекта.
+func (s *Members) getInProject(ctx context.Context, projectID, memberID uuid.UUID) (models.ProjectMember, error) {
+	var member models.ProjectMember
+	err := s.db.WithContext(ctx).Preload("User").First(&member, "id = ? AND project_id = ?", memberID, projectID).Error
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		return models.ProjectMember{}, ErrNotFound
