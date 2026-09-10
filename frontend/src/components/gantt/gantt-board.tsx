@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/utils";
 import type { TimeScale } from "@/lib/gantt";
-import type { Project, Task, TaskDependency, User as DomainUser } from "@/types";
+import type { Project, Task, TaskDependency } from "@/types";
 
 const SCALES = [
   { value: "days", label: "Дни" },
@@ -28,13 +28,16 @@ export function GanttBoard({
   project,
   tasks,
   dependencies,
-  currentUser,
+  dependenciesLoading = false,
+  currentUserId,
   today,
 }: {
   project: Project;
   tasks: Task[];
   dependencies: TaskDependency[];
-  currentUser: DomainUser;
+  /** Связи догружаются отдельными запросами — до их прихода стрелок нет. */
+  dependenciesLoading?: boolean;
+  currentUserId?: string;
   today: string;
 }) {
   const [scale, setScale] = useState<TimeScale>("weeks");
@@ -49,7 +52,7 @@ export function GanttBoard({
     );
 
   const visibleTasks = tasks.filter((task) => {
-    if (filters.includes("mine") && task.assignee?.id !== currentUser.id) return false;
+    if (filters.includes("mine") && task.assignee?.id !== currentUserId) return false;
     if (filters.includes("critical") && !task.isCriticalPath) return false;
     if (filters.includes("risks") && task.planVsActualDeviationDays >= 0) return false;
     return true;
@@ -158,6 +161,9 @@ export function GanttBoard({
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-ink-faint">
         <span className="font-semibold tracking-wider uppercase">Легенда связей:</span>
+        {dependenciesLoading ? (
+          <span className="text-ink-faint">Загружаем связи задач…</span>
+        ) : null}
         <span className="flex items-center gap-1.5">
           <span className="h-px w-4 bg-line-strong" /> Обычная (FS)
         </span>

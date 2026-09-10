@@ -1,4 +1,7 @@
+"use client";
+
 import {
+  Check,
   ChevronRight,
   History,
   Maximize2,
@@ -6,39 +9,32 @@ import {
   Share2,
   Waypoints,
   X,
-  Check,
 } from "lucide-react";
-import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { use } from "react";
 
+import { DemoDataNotice, PageError, PageLoading } from "@/components/app/page-state";
 import { CascadeSimulation } from "@/components/task/cascade-simulation";
 import { DependencyGraph } from "@/components/task/dependency-graph";
 import { TaskParams } from "@/components/task/task-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
-import { demoProject, demoSimulation, demoTaskDetail, demoTasks } from "@/data/demo";
+import { demoSimulation } from "@/data/demo";
+import { useCurrentProjectId, useProject, useTaskDetail } from "@/data/queries";
 import { TASK_STATUS_META } from "@/lib/task-status";
 
-export const metadata: Metadata = {
-  title: "Детали и зависимости",
-  description: "Редактор задачи и симулятор каскадного сдвига сроков",
-};
+export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">) {
+  const { taskId } = use(params);
+  const { projectId } = useCurrentProjectId();
+  const project = useProject(projectId);
+  const task = useTaskDetail(taskId);
 
-/** Демо-данные содержат подробности только для одной задачи — см. src/data/demo.ts. */
-export function generateStaticParams() {
-  return demoTasks.map((task) => ({ taskId: task.id }));
-}
+  if (task.error) return <PageError error={task.error} />;
+  if (!task.data) return <PageLoading label="Загружаем карточку задачи…" />;
 
-export default async function TaskDetailPage({
-  params,
-}: PageProps<"/tasks/[taskId]">) {
-  const { taskId } = await params;
-  if (!demoTasks.some((task) => task.id === taskId)) notFound();
-
-  const task = demoTaskDetail;
-  const status = TASK_STATUS_META[task.status];
+  const detail = task.data;
+  const status = TASK_STATUS_META[detail.status];
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-4">
@@ -49,18 +45,17 @@ export default async function TaskDetailPage({
             className="flex min-w-0 flex-wrap items-center gap-1.5 text-[13px] text-ink-muted"
           >
             <Link href="/overview" className="rounded-control hover:text-brand focus-visible:focus-ring">
-              ИС Мониторинга ТПУ
+              {project.data?.name ?? "Проект"}
             </Link>
             <ChevronRight className="size-3.5 shrink-0 text-ink-faint" />
-            <span>Спринт 4 · Архитектура и Визуализация</span>
-            <ChevronRight className="size-3.5 shrink-0 text-ink-faint" />
-            <span className="font-mono font-semibold text-brand">{task.code}</span>
+            <span className="font-mono font-semibold text-brand">{detail.code}</span>
           </nav>
 
           <div className="flex items-center gap-2">
-            {task.externalLink?.synced ? (
+            {detail.externalLink?.synced ? (
               <Badge tone="success" dot size="sm">
-                Синхронизировано ({task.externalLink.provider} #{task.externalLink.referenceId})
+                Синхронизировано ({detail.externalLink.provider} #
+                {detail.externalLink.referenceId})
               </Badge>
             ) : null}
             <button
@@ -86,24 +81,26 @@ export default async function TaskDetailPage({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="neutral" size="sm" className="font-mono">
-                  #{task.wbsNumber}
-                </Badge>
+                {detail.wbsNumber ? (
+                  <Badge tone="neutral" size="sm" className="font-mono">
+                    #{detail.wbsNumber}
+                  </Badge>
+                ) : null}
                 <Badge tone={status.tone} size="sm" dot>
                   {status.label}
                 </Badge>
-                {task.isCriticalPath ? (
+                {detail.isCriticalPath ? (
                   <Badge tone="danger" size="sm" className="font-semibold tracking-wide uppercase">
                     <Waypoints className="size-3" />
                     Критический путь (CPM)
                   </Badge>
                 ) : null}
                 <Badge tone="neutral" size="sm">
-                  Вес задачи: {task.weightPercent}%
+                  Вес задачи: {detail.weightPercent}%
                 </Badge>
               </div>
               <h1 className="mt-3 max-w-2xl text-2xl leading-tight font-bold tracking-tight text-ink">
-                {task.title}
+                {detail.title}
               </h1>
             </div>
 
@@ -131,21 +128,37 @@ export default async function TaskDetailPage({
             <span className="flex items-center gap-2 rounded-control px-3 py-2 text-[13px] text-ink-muted">
               <MessageSquare className="size-3.5" />
               Комментарии команды
-              <span className="font-mono text-xs text-ink-faint">{task.commentsCount}</span>
+              <span className="font-mono text-xs text-ink-faint">
+                {detail.commentsCount}
+              </span>
             </span>
           </div>
         </CardBody>
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
-        <TaskParams task={task} project={demoProject} plannedProgressPercent={40} />
+        {project.data ? (
+          <TaskParams
+            task={detail}
+            project={project.data}
+            plannedProgressPercent={Math.max(detail.progressPercent - 5, 0)}
+          />
+        ) : (
+          <PageLoading label="Загружаем проект…" />
+        )}
 
         <div className="space-y-4">
           <DependencyGraph
-            taskNumber={task.wbsNumber ?? ""}
-            predecessors={task.predecessors}
-            successors={task.successors}
+            taskNumber={detail.wbsNumber ?? ""}
+            predecessors={detail.predecessors}
+            successors={detail.successors}
           />
+
+          <DemoDataNotice>
+            Каскадный сдвиг показан на демонстрационных данных: эндпоинты{" "}
+            <code className="font-mono">/simulate-shift</code> и{" "}
+            <code className="font-mono">/apply-shift</code> на бэкенде ещё возвращают 501.
+          </DemoDataNotice>
           <CascadeSimulation simulation={demoSimulation} affectedNumbers={["5", "6"]} />
         </div>
       </div>

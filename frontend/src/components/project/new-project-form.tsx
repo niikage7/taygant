@@ -10,9 +10,12 @@ import {
   SlidersHorizontal,
   Users,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { TeamStep } from "@/components/project/team-step";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+
+import { TeamStep, type DraftMember } from "@/components/project/team-step";
 import { WizardStep } from "@/components/project/wizard-step";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,9 +26,13 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert } from "@/components/ui/alert";
+import { queryKeys } from "@/data/queries";
+import { toUserMessage } from "@/lib/api-error-message";
 import { formatWeekday, plural } from "@/lib/format";
+import { projectsService } from "@/services";
 import { cn } from "@/lib/utils";
-import type { ProjectMember, WorkingCalendarType } from "@/types";
+import type { ProjectCreateRequest, User, WorkingCalendarType } from "@/types";
 
 const NAME_MAX_LENGTH = 120;
 const SECTION = "text-[11px] font-semibold tracking-wider text-ink-faint uppercase";
@@ -36,11 +43,12 @@ const SECTION = "text-[11px] font-semibold tracking-wider text-ink-faint upperca
  * работают как оглавление.
  */
 export function NewProjectForm({
-  owner,
-  members,
+  users,
+  currentUser,
 }: {
-  owner: ProjectMember;
-  members: ProjectMember[];
+  /** Пользователи платформы для назначения в команду (GET /users). */
+  users: User[];
+  currentUser: User | null;
 }) {
   const [name, setName] = useState("Разработка мобильного приложения студента ТПУ");
   const [description, setDescription] = useState(
@@ -48,10 +56,45 @@ export function NewProjectForm({
   );
   const [startDate, setStartDate] = useState("2025-11-15");
   const [deadline, setDeadline] = useState("2026-01-25");
+  const [customerOrg, setCustomerOrg] = useState("Институт кибернетики ТПУ");
   const [calendar, setCalendar] = useState<WorkingCalendarType>("5/2");
   const [autoRecalculate, setAutoRecalculate] = useState(true);
   const [highlightCriticalPath, setHighlightCriticalPath] = useState(true);
   const [includeHolidays, setIncludeHolidays] = useState(true);
+  const [members, setMembers] = useState<DraftMember[]>([]);
+
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const createProject = useMutation({
+    mutationFn: (payload: ProjectCreateRequest) => projectsService.create(payload),
+    onSuccess: async (project) => {
+      // Список проектов формирует «текущий проект» для всех внутренних экранов,
+      // поэтому его нужно перечитать до перехода на диаграмму.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+      router.push(project.status === "draft" ? "/overview" : "/gantt");
+    },
+  });
+
+  const submit = (saveAsDraft: boolean) => {
+    if (!requiredFilled) return;
+    createProject.mutate({
+      name: name.trim(),
+      description: description.trim() || undefined,
+      customerOrg: customerOrg || undefined,
+      startDate,
+      deadline,
+      workingCalendarType: calendar,
+      includePublicHolidays: includeHolidays,
+      autoRecalculateDependents: autoRecalculate,
+      highlightCriticalPath,
+      members: members.map((member) => ({
+        userId: member.userId,
+        projectRole: member.projectRole,
+      })),
+      saveAsDraft,
+    });
+  };
 
   const start = parseISO(startDate);
   const end = parseISO(deadline);
@@ -63,7 +106,13 @@ export function NewProjectForm({
   const requiredFilled = name.trim().length > 0 && validRange;
 
   return (
-    <form className="space-y-4" onSubmit={(event) => event.preventDefault()}>
+    <form
+      className="space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit(false);
+      }}
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-brand uppercase">
@@ -137,10 +186,15 @@ export function NewProjectForm({
             <Label htmlFor="project-customer">
               Заказчик / Подразделение <span className="text-danger">*</span>
             </Label>
-            <Select id="project-customer" defaultValue="cybernetics" className="mt-1.5">
-              <option value="cybernetics">Институт кибернетики ТПУ</option>
-              <option value="rectorate">Дирекция ТПУ</option>
-              <option value="quality">Отдел качества</option>
+            <Select
+              id="project-customer"
+              value={customerOrg}
+              onChange={(event) => setCustomerOrg(event.target.value)}
+              className="mt-1.5"
+            >
+              <option>Институт кибернетики ТПУ</option>
+              <option>Дирекция ТПУ</option>
+              <option>Отдел качества</option>
             </Select>
           </div>
         </div>
@@ -234,7 +288,12 @@ export function NewProjectForm({
         title="Шаг 2. Команда проекта и роли"
         subtitle="Назначение ответственных и распределение прав управления"
       >
-        <TeamStep owner={owner} initialMembers={members} />
+        <TeamStep
+          users={users}
+          currentUser={currentUser}
+          members={members}
+          onChange={setMembers}
+        />
       </WizardStep>
 
       <WizardStep
@@ -301,6 +360,16 @@ export function NewProjectForm({
         </div>
       </WizardStep>
 
+      {createProject.isError ? (
+        <Alert tone="danger">
+          {toUserMessage(
+            createProject.error,
+            { 403: "Недостаточно прав для создания проекта" },
+            "Не удалось создать проект. Попробуйте ещё раз",
+          )}
+        </Alert>
+      ) : null}
+
       <Card>
         <CardBody className="flex flex-wrap items-center justify-between gap-4">
           <p
@@ -321,12 +390,19 @@ export function NewProjectForm({
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="secondary">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => submit(true)}
+              disabled={createProject.isPending}
+            >
               Сохранить как черновик
             </Button>
-            <Button type="submit" disabled={!requiredFilled}>
+            <Button type="submit" disabled={!requiredFilled || createProject.isPending}>
               <Flag />
-              Создать проект и перейти к диаграмме Ганта
+              {createProject.isPending
+                ? "Создаём проект…"
+                : "Создать проект и перейти к диаграмме Ганта"}
               <ArrowRight />
             </Button>
           </div>

@@ -1,33 +1,29 @@
 /**
- * Демонстрационные данные внутренних экранов.
+ * Демонстрационные данные для экранов, чьи эндпоинты ещё не реализованы.
  *
- * ⚠️ ВРЕМЕННЫЙ ИСТОЧНИК. В бэкенде из 15 групп эндпоинтов реализованы только
- * `/auth/*` и `/users/*` — остальные 40 хендлеров пока возвращают 501
- * (`notImplemented` в `backend/internal/api/*.go`), а seed наполняет лишь таблицу
- * пользователей. Подключать экраны к API до этого момента бессмысленно: они
- * показывали бы только ошибку.
+ * ⚠️ Осталось ровно два потребителя, и оба помечены в интерфейсе плашкой
+ * «данные демонстрационные»:
+ *   - `demoDashboard` — `GET /projects/{id}/dashboard` и `/workload` отдают 501;
+ *   - `demoSimulation` — `POST /tasks/{id}/simulate-shift` и `/apply-shift` отдают 501.
  *
- * Содержимое повторяет макеты и типизировано боевыми интерфейсами из `@/types`,
- * поэтому переход на реальные данные — это замена вызовов в `src/data/queries.ts`
- * на соответствующие сервисы, без правок компонентов.
+ * Всё остальное (проект, задачи, связи, вехи, участники) экраны получают из API
+ * через `src/data/queries.ts`. Внутренние константы ниже намеренно НЕ
+ * экспортируются, чтобы демо-данные нельзя было случайно подтянуть в экран,
+ * у которого уже есть настоящий источник.
  */
 import type {
-  ChecklistItem,
   MemberWorkload,
   Milestone,
   Project,
   ProjectDashboard,
-  ProjectMember,
   ShiftSimulation,
   Task,
-  TaskDependency,
-  TaskDetail,
   User,
 } from "@/types";
 
 const PROJECT_ID = "prj-2025-084";
 
-export const demoUsers = {
+const demoUsers = {
   anna: {
     id: "u-anna",
     fullName: "Анна Соколова",
@@ -78,7 +74,7 @@ export const demoUsers = {
   },
 } satisfies Record<string, User>;
 
-export const demoProject: Project = {
+const demoProject: Project = {
   id: PROJECT_ID,
   code: "TPU-PROJ-884",
   name: "Внедрение корпоративной системы управления проектами ТПУ",
@@ -103,7 +99,7 @@ export const demoProject: Project = {
 };
 
 /** Задачи проекта в порядке WBS — общий источник для Ганта и реестра. */
-export const demoTasks: Task[] = [
+const demoTasks: Task[] = [
   {
     id: "t-1",
     projectId: PROJECT_ID,
@@ -253,24 +249,15 @@ export const demoTasks: Task[] = [
   },
 ];
 
-/** Связи между задачами: цепочка FS плюс финиш-к-финишу перед релизом. */
-export const demoDependencies: TaskDependency[] = [
-  { id: "d-1", predecessorTaskId: "t-1", successorTaskId: "t-2", type: "FS", lagDays: 0, isCritical: false },
-  { id: "d-2", predecessorTaskId: "t-2", successorTaskId: "t-3", type: "FS", lagDays: 0, isCritical: false },
-  { id: "d-3", predecessorTaskId: "t-3", successorTaskId: "t-4", type: "FS", lagDays: 0, isCritical: true },
-  { id: "d-4", predecessorTaskId: "t-4", successorTaskId: "t-5", type: "FS", lagDays: 0, isCritical: true },
-  { id: "d-5", predecessorTaskId: "t-5", successorTaskId: "t-6", type: "FS", lagDays: 0, isCritical: false },
-  { id: "d-6", predecessorTaskId: "t-6", successorTaskId: "t-7", type: "FS", lagDays: 0, isCritical: true },
-];
 
-export const demoMilestones: Milestone[] = [
+const demoMilestones: Milestone[] = [
   { id: "m-1", projectId: PROJECT_ID, code: "КТ-1", name: "Архитектура и ТЗ", plannedDate: "2025-10-25", actualDate: "2025-10-25", status: "done", riskDays: null },
   { id: "m-2", projectId: PROJECT_ID, code: "КТ-2", name: "Интеграция Ганта", plannedDate: "2025-11-07", actualDate: null, status: "current", riskDays: 2 },
   { id: "m-3", projectId: PROJECT_ID, code: "КТ-3", name: "Пилотное тестирование", plannedDate: "2025-11-11", actualDate: null, status: "planned", riskDays: null },
   { id: "m-4", projectId: PROJECT_ID, code: "КТ-4", name: "Защита перед жюри", plannedDate: "2025-12-05", actualDate: null, status: "final", riskDays: null },
 ];
 
-export const demoWorkload: MemberWorkload[] = [
+const demoWorkload: MemberWorkload[] = [
   { user: demoUsers.mikhail, sprintId: "s-4", assignedHoursPerWeek: 44, weeklyHoursLimit: 40, utilizationPercent: 110 },
   { user: demoUsers.elena, sprintId: "s-4", assignedHoursPerWeek: 34, weeklyHoursLimit: 40, utilizationPercent: 85 },
   { user: demoUsers.dmitry, sprintId: "s-4", assignedHoursPerWeek: 28, weeklyHoursLimit: 40, utilizationPercent: 70 },
@@ -312,61 +299,7 @@ export const demoDashboard: ProjectDashboard = {
   teamWorkload: demoWorkload,
 };
 
-const demoChecklist: ChecklistItem[] = [
-  { id: "c-1", taskId: "t-4", text: "Виртуализация строк таблицы и таймлайна", isDone: true },
-  { id: "c-2", taskId: "t-4", text: "Связывание задач перетаскиванием коннекторов", isDone: true },
-  { id: "c-3", taskId: "t-4", text: "Поддержка типов связей: FS, SS, FF, SF", isDone: true },
-  { id: "c-4", taskId: "t-4", text: "Симулятор автоматического каскадного сдвига дат", isDone: false },
-  { id: "c-5", taskId: "t-4", text: "Оптимизация рендера SVG-кривых связей до 60fps", isDone: false },
-];
 
-export const demoTaskDetail: TaskDetail = {
-  ...taskById("t-4"),
-  title: "Разработка модуля интерактивной диаграммы Ганта",
-  // В карточке задачи прогресс детальнее, чем в сводке реестра: 45% при плане 40%.
-  progressPercent: 45,
-  description:
-    "Реализация Canvas/SVG движка визуализации диаграммы Ганта для кейс-чемпионата ТПУ. Включает отрисовку сетки дней/недель, виртуализацию рендеринга 500+ узлов, интерактивное перетаскивание дат и расчёт критического пути в реальном времени.",
-  externalLink: {
-    provider: "GitLab",
-    url: "https://gitlab.example.org/tpu/taygant/-/issues/342",
-    referenceId: "342",
-    synced: true,
-  },
-  checklist: demoChecklist,
-  predecessors: [
-    {
-      id: "d-3",
-      predecessorTaskId: "t-3",
-      successorTaskId: "t-4",
-      predecessorTitle: "Архитектура БД и API",
-      type: "FS",
-      lagDays: 0,
-      isCritical: true,
-    },
-  ],
-  successors: [
-    {
-      id: "d-4",
-      predecessorTaskId: "t-4",
-      successorTaskId: "t-5",
-      successorTitle: "Интеграция связей и пересчёта сроков",
-      type: "FS",
-      lagDays: 0,
-      isCritical: true,
-    },
-    {
-      id: "d-7",
-      predecessorTaskId: "t-4",
-      successorTaskId: "t-6",
-      successorTitle: "Тестирование и валидация ТПУ",
-      type: "FF",
-      lagDays: 0,
-      isCritical: false,
-    },
-  ],
-  commentsCount: 3,
-};
 
 /** Результат what-if моделирования сдвига задачи #4 на +5 дней. */
 export const demoSimulation: ShiftSimulation = {
@@ -414,9 +347,3 @@ export const demoSimulation: ShiftSimulation = {
   applied: false,
 };
 
-export const demoMembers: ProjectMember[] = [
-  { id: "pm-1", user: demoUsers.alex, projectRole: "project_manager", sprintRole: "Руководитель проекта", accessLevel: "full", weeklyHoursLimit: 40 },
-  { id: "pm-2", user: demoUsers.anna, projectRole: "analyst", sprintRole: "Аналитик", accessLevel: "edit", weeklyHoursLimit: 40 },
-  { id: "pm-3", user: demoUsers.mikhail, projectRole: "developer", sprintRole: "Разработчик", accessLevel: "edit", weeklyHoursLimit: 40 },
-  { id: "pm-4", user: demoUsers.olga, projectRole: "curator", sprintRole: "Куратор от ТПУ", accessLevel: "view", weeklyHoursLimit: 20 },
-];

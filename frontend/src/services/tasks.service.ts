@@ -30,7 +30,15 @@ export const tasksService = {
     return httpClient.post<Task>(`/projects/${projectId}/tasks`, payload);
   },
 
-  /** Задачи проекта вместе со связями и рассчитанным критическим путём (CPM). */
+  /**
+   * Агрегированные данные диаграммы Ганта.
+   *
+   * ⚠️ НЕ ВЫЗЫВАТЬ: маршрут `GET /projects/{projectId}/gantt` на бэкенде не
+   * зарегистрирован — расчёт критического пути требует CPM-движка, которого
+   * пока нет (см. комментарий в `backend/internal/api/tasks.go`). Запрос вернёт
+   * 404. Экран Ганта собирает задачи и связи отдельными запросами, см.
+   * `useProjectDependencies` в `src/data/queries.ts`.
+   */
   getGantt(projectId: string, params?: GanttParams): Promise<GanttChart> {
     return httpClient.get<GanttChart>(`/projects/${projectId}/gantt`, {
       query: { scale: params?.scale },

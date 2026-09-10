@@ -1,19 +1,21 @@
-import type { Metadata } from "next";
+"use client";
 
+import { useQuery } from "@tanstack/react-query";
+
+import { PageError, PageLoading } from "@/components/app/page-state";
 import { NewProjectForm } from "@/components/project/new-project-form";
-import { demoMembers } from "@/data/demo";
-
-export const metadata: Metadata = {
-  title: "Создание проекта",
-  description: "Мастер инициации проекта: параметры, команда и настройки диаграммы Ганта",
-};
+import { usersService } from "@/services";
 
 export default function NewProjectPage() {
-  const [owner, ...members] = demoMembers;
+  const users = useQuery({ queryKey: ["users"], queryFn: () => usersService.list() });
+  const me = useQuery({ queryKey: ["users", "me"], queryFn: () => usersService.getMe() });
+
+  if (users.error) return <PageError error={users.error} />;
+  if (!users.data) return <PageLoading label="Загружаем список пользователей…" />;
 
   return (
     <div className="mx-auto max-w-[1200px]">
-      <NewProjectForm owner={owner} members={members} />
+      <NewProjectForm users={users.data} currentUser={me.data ?? null} />
     </div>
   );
 }

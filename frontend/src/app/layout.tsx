@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -38,7 +39,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         у <html> была задана высота, и на страницах длиннее экрана (например,
         пользовательское соглашение) это ломает прокрутку.
       */}
-      <body className="flex min-h-screen flex-col">{children}</body>
+      <body className="flex min-h-screen flex-col">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
