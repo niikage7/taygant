@@ -6,11 +6,11 @@ const nextConfig: NextConfig = {
   rewrites: async () => {
     return [
       {
-        source: "/backend/:path",
-        destination: `${process.env.BACKEND_URL}/:path`
-      }
-    ]
-  }
+        source: "/backend/:path*",
+        destination: `${process.env.BACKEND_URL}/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

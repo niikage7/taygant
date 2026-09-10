@@ -1,26 +1,93 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/**
+ * Дизайн-токены «ПроектКонтроль».
+ * Значения сняты напрямую с макетов (SVG): фирменный синий #004AC6, шкала slate
+ * для текста/поверхностей, статусные цвета Ганта и радиусы 4px (контролы) / 8px (карточки).
+ */
+@theme {
+  /* --- Брендовая палитра --- */
+  --color-brand: #004ac6;
+  --color-brand-hover: #003a9e;
+  --color-brand-active: #002f80;
+  --color-brand-ink: #00174b;
+  --color-brand-tint: #eff4ff;
+  --color-brand-chip: #dbe1ff;
+  --color-brand-soft: #dce9ff;
+  --color-brand-soft-alt: #e5eeff;
+  --color-brand-logo: #2563eb;
+  --color-brand-logo-soft: #93c5fd;
+  --color-brand-logo-dot: #38bdf8;
+
+  /* --- Акцент (индиго): вехи, вторичные метки --- */
+  --color-accent: #4648d4;
+  --color-accent-soft: #6366f1;
+  --color-accent-tint: #eef2ff;
+
+  /* --- Поверхности и текст --- */
+  --color-page: #f8f9ff;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f5f9;
+  --color-surface-subtle: #f8fafc;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+  --color-ink: #0f172a;
+  --color-ink-muted: #475569;
+  --color-ink-faint: #94a3b8;
+
+  /* --- Статусы задач и рисков --- */
+  --color-success: #10b981;
+  --color-success-tint: #ecfdf5;
+  --color-warning: #f59e0b;
+  --color-warning-tint: #fffbeb;
+  --color-warning-ink: #92400e;
+  --color-danger: #dc2626;
+  --color-danger-soft: #ef4444;
+  --color-danger-tint: #fef2f2;
+  --color-danger-chip: #ffe4e6;
+  --color-critical-tint: #fff1f2;
+
+  /* --- Типографика --- */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
+
+  /* --- Радиусы: макет использует ровно два --- */
+  --radius-control: 4px;
+  --radius-card: 8px;
+
+  /* --- Тени --- */
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 8px 24px -12px rgb(15 23 42 / 0.12);
+  --shadow-popover: 0 4px 6px -2px rgb(15 23 42 / 0.05), 0 12px 32px -8px rgb(15 23 42 / 0.16);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  body {
+    background-color: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+
+  /* Убираем нативную иконку раскрытия пароля в Edge — в макете свой toggle. */
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none;
+  }
+
+  /* Автозаполнение Chrome не должно перекрашивать поля в жёлтый. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--color-ink);
+    -webkit-box-shadow: 0 0 0 1000px var(--color-surface-muted) inset;
+    caret-color: var(--color-ink);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@utility focus-ring {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
 }
