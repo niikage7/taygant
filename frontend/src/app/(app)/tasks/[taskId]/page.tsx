@@ -7,26 +7,26 @@ import {
   Maximize2,
   MessageSquare,
   Share2,
+  PlugZap,
   Waypoints,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { use } from "react";
 
-import { DemoDataNotice, PageError, PageLoading } from "@/components/app/page-state";
-import { CascadeSimulation } from "@/components/task/cascade-simulation";
+import { PageError, PageLoading } from "@/components/app/page-state";
 import { DependencyGraph } from "@/components/task/dependency-graph";
 import { TaskParams } from "@/components/task/task-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
-import { demoSimulation } from "@/data/demo";
-import { useCurrentProjectId, useProject, useTaskDetail } from "@/data/queries";
+import { useCurrentProject } from "@/data/current-project";
+import { useProject, useTaskDetail } from "@/data/queries";
 import { TASK_STATUS_META } from "@/lib/task-status";
 
 export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">) {
   const { taskId } = use(params);
-  const { projectId } = useCurrentProjectId();
+  const { projectId } = useCurrentProject();
   const project = useProject(projectId);
   const task = useTaskDetail(taskId);
 
@@ -154,12 +154,22 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
             successors={detail.successors}
           />
 
-          <DemoDataNotice>
-            Каскадный сдвиг показан на демонстрационных данных: эндпоинты{" "}
-            <code className="font-mono">/simulate-shift</code> и{" "}
-            <code className="font-mono">/apply-shift</code> на бэкенде ещё возвращают 501.
-          </DemoDataNotice>
-          <CascadeSimulation simulation={demoSimulation} affectedNumbers={["5", "6"]} />
+          <Card>
+            <CardBody className="flex items-start gap-3 py-4">
+              <PlugZap className="mt-0.5 size-4 shrink-0 text-warning" />
+              <p className="text-[13px] text-ink-muted">
+                <span className="font-semibold text-ink">
+                  Симулятор каскадного сдвига сроков появится здесь
+                </span>{" "}
+                после реализации{" "}
+                <code className="font-mono">/tasks/{"{id}"}/simulate-shift</code> и{" "}
+                <code className="font-mono">/apply-shift</code> — сейчас эти эндпоинты
+                возвращают 501. Вёрстка каскадной диаграммы готова
+                (<code className="font-mono">components/task/cascade-simulation.tsx</code>)
+                и подключится без изменений экрана.
+              </p>
+            </CardBody>
+          </Card>
         </div>
       </div>
     </div>

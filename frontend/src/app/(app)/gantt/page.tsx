@@ -9,8 +9,8 @@ import {
 } from "@/components/app/page-state";
 import { GanttBoard } from "@/components/gantt/gantt-board";
 import { Badge } from "@/components/ui/badge";
+import { useCurrentProject } from "@/data/current-project";
 import {
-  useCurrentProjectId,
   useProject,
   useProjectDependencies,
   useTasks,
@@ -19,7 +19,7 @@ import { formatDate } from "@/lib/format";
 import { getStoredUser } from "@/lib/session";
 
 export default function GanttPage() {
-  const { projectId, isEmpty, error: projectsError } = useCurrentProjectId();
+  const { projectId, isEmpty, error: projectsError } = useCurrentProject();
   const project = useProject(projectId);
   const tasks = useTasks(projectId);
   const { dependencies, isLoading: dependenciesLoading } = useProjectDependencies(

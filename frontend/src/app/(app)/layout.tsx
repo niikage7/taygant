@@ -6,7 +6,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { PageLoading } from "@/components/app/page-state";
 import { Sidebar } from "@/components/app/sidebar";
 import { TopBar } from "@/components/app/top-bar";
-import { useProjects, useTasks } from "@/data/queries";
+import { CurrentProjectProvider, useCurrentProject } from "@/data/current-project";
+import { useTasks } from "@/data/queries";
 import { getAccessToken } from "@/services/http-client";
 
 /**
@@ -18,6 +19,14 @@ import { getAccessToken } from "@/services/http-client";
  * расхождение серверной и клиентской разметки.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
+  return (
+    <CurrentProjectProvider>
+      <AppShell>{children}</AppShell>
+    </CurrentProjectProvider>
+  );
+}
+
+function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
 
@@ -30,11 +39,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     router.replace("/login");
   }, [router]);
 
-  const projects = useProjects();
-  const project = projects.data?.[0];
+  const { projects, projectId, selectProject } = useCurrentProject();
   // Тот же ключ, что и на экране Ганта, — React Query переиспользует ответ,
   // лишнего запроса не будет.
-  const tasks = useTasks(project?.id);
+  const tasks = useTasks(projectId);
   const firstTaskId = tasks.data?.[0]?.id;
 
   if (authorized === null) {
@@ -50,9 +58,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-1">
       <Sidebar
-        projectName={project?.name ?? "Проект не выбран"}
-        healthIndex={project?.healthIndex ?? 0}
-        criticalRisksCount={project?.criticalRisksCount ?? 0}
+        projects={projects}
+        currentProjectId={projectId}
+        onSelectProject={selectProject}
         detailsHref={firstTaskId ? `/tasks/${firstTaskId}` : null}
       />
       <div className="flex min-w-0 flex-1 flex-col">

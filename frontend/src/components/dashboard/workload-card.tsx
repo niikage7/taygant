@@ -1,3 +1,9 @@
+/**
+ * Загрузка команды текущего спринта.
+ *
+ * ⚠️ Пока не подключён: часы приходят из `GET /projects/{id}/workload`,
+ * который возвращает 501. Компонент готов и ждёт эндпоинт.
+ */
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";

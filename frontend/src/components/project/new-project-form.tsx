@@ -1,6 +1,12 @@
 "use client";
 
-import { differenceInBusinessDays, differenceInCalendarDays, parseISO } from "date-fns";
+import {
+  addDays,
+  differenceInBusinessDays,
+  differenceInCalendarDays,
+  format,
+  parseISO,
+} from "date-fns";
 import {
   ArrowRight,
   CalendarCheck2,
@@ -21,10 +27,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert } from "@/components/ui/alert";
 import { queryKeys } from "@/data/queries";
@@ -35,6 +41,8 @@ import { cn } from "@/lib/utils";
 import type { ProjectCreateRequest, User, WorkingCalendarType } from "@/types";
 
 const NAME_MAX_LENGTH = 120;
+
+const toIsoDate = (date: Date) => format(date, "yyyy-MM-dd");
 const SECTION = "text-[11px] font-semibold tracking-wider text-ink-faint uppercase";
 
 /**
@@ -50,13 +58,14 @@ export function NewProjectForm({
   users: User[];
   currentUser: User | null;
 }) {
-  const [name, setName] = useState("Разработка мобильного приложения студента ТПУ");
-  const [description, setDescription] = useState(
-    "Создание единого цифрового сервиса для студентов Томского политехнического университета: доступ к актуальному расписанию пар, интеграция с личным кабинетом успеваемости и push-уведомления об академических событиях.",
-  );
-  const [startDate, setStartDate] = useState("2025-11-15");
-  const [deadline, setDeadline] = useState("2026-01-25");
-  const [customerOrg, setCustomerOrg] = useState("Институт кибернетики ТПУ");
+  // Форма создаёт настоящий проект, поэтому поля пустые: предзаполненный текст
+  // из макета попадал бы в базу у тех, кто не заметил его и нажал «Создать».
+  // Даты — единственное исключение: срок по умолчанию удобнее готового, чем пустой.
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [startDate, setStartDate] = useState(() => toIsoDate(new Date()));
+  const [deadline, setDeadline] = useState(() => toIsoDate(addDays(new Date(), 30)));
+  const [customerOrg, setCustomerOrg] = useState("");
   const [calendar, setCalendar] = useState<WorkingCalendarType>("5/2");
   const [autoRecalculate, setAutoRecalculate] = useState(true);
   const [highlightCriticalPath, setHighlightCriticalPath] = useState(true);
@@ -113,43 +122,22 @@ export function NewProjectForm({
         submit(false);
       }}
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-brand uppercase">
-            <span className="size-1.5 rounded-full bg-brand" />
-            Мастер инициации · Шаг 1 из 4
-          </p>
-          <h1 className="mt-1.5 text-2xl leading-tight font-bold tracking-tight text-ink">
-            Создание нового проекта
-          </h1>
-          <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-ink-muted">
-            Задайте базовые параметры, плановые сроки и структуру задач. Конфигурация
-            сформирует календарно-сетевой график и WBS-матрицу.
-          </p>
-        </div>
-
-        <ol className="flex items-center gap-1 rounded-control border border-line bg-surface p-1 text-[13px]">
-          {["Параметры", "Команда", "Гант"].map((step, index) => (
-            <li key={step}>
-              <span
-                className={cn(
-                  "flex items-center gap-2 rounded-control px-3 py-1.5",
-                  index === 0 ? "bg-brand-tint font-medium text-brand" : "text-ink-muted",
-                )}
-              >
-                <span
-                  className={cn(
-                    "flex size-5 items-center justify-center rounded-full text-[11px] font-bold",
-                    index === 0 ? "bg-brand text-white" : "bg-surface-muted text-ink-faint",
-                  )}
-                >
-                  {index + 1}
-                </span>
-                {step}
-              </span>
-            </li>
-          ))}
-        </ol>
+      <div className="min-w-0">
+        {/*
+          Счётчик шагов убран вместе с меню: все три секции показаны на одной
+          странице, и «Шаг 1 из 3» противоречил бы тому, что видит пользователь.
+        */}
+        <p className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-brand uppercase">
+          <span className="size-1.5 rounded-full bg-brand" />
+          Мастер инициации
+        </p>
+        <h1 className="mt-1.5 text-2xl leading-tight font-bold tracking-tight text-ink">
+          Создание нового проекта
+        </h1>
+        <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-ink-muted">
+          Задайте базовые параметры, плановые сроки и структуру задач. Конфигурация
+          сформирует календарно-сетевой график и WBS-матрицу.
+        </p>
       </div>
 
       <WizardStep
@@ -184,18 +172,15 @@ export function NewProjectForm({
 
           <div>
             <Label htmlFor="project-customer">
-              Заказчик / Подразделение <span className="text-danger">*</span>
+              Заказчик / Подразделение
             </Label>
-            <Select
+            <Input
               id="project-customer"
               value={customerOrg}
               onChange={(event) => setCustomerOrg(event.target.value)}
+              placeholder="Например, Институт кибернетики ТПУ"
               className="mt-1.5"
-            >
-              <option>Институт кибернетики ТПУ</option>
-              <option>Дирекция ТПУ</option>
-              <option>Отдел качества</option>
-            </Select>
+            />
           </div>
         </div>
 
@@ -215,17 +200,12 @@ export function NewProjectForm({
             <Label htmlFor="project-start" className={SECTION}>
               Дата старта графика
             </Label>
-            <Input
+            <DateInput
               id="project-start"
-              type="date"
               value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
+              onChange={setStartDate}
               className="mt-1.5 bg-surface"
-              trailing={
-                <span className="font-mono text-xs text-ink-faint">
-                  {formatWeekday(startDate)}
-                </span>
-              }
+              weekdayHint={formatWeekday(startDate)}
             />
           </div>
 
@@ -237,18 +217,14 @@ export function NewProjectForm({
             <Label htmlFor="project-deadline" className={SECTION}>
               Плановый дедлайн
             </Label>
-            <Input
+            <DateInput
               id="project-deadline"
-              type="date"
               value={deadline}
-              onChange={(event) => setDeadline(event.target.value)}
+              onChange={setDeadline}
               className="mt-1.5 bg-surface"
               invalid={!validRange}
-              trailing={
-                <span className="font-mono text-xs text-ink-faint">
-                  {validRange ? formatWeekday(deadline) : ""}
-                </span>
-              }
+              weekdayHint={validRange ? formatWeekday(deadline) : undefined}
+              minDate={startDate}
             />
           </div>
 

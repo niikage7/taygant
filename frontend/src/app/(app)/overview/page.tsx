@@ -1,89 +1,92 @@
 "use client";
 
-import { Bell, FileBarChart, GitBranch } from "lucide-react";
+import { PlugZap } from "lucide-react";
 
-import { DemoDataNotice, EmptyProjects, PageError } from "@/components/app/page-state";
+import {
+  EmptyProjects,
+  PageError,
+  PageLoading,
+} from "@/components/app/page-state";
 import { AttentionTasks } from "@/components/dashboard/attention-tasks";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { MilestonesStrip } from "@/components/dashboard/milestones-strip";
-import { RiskCard } from "@/components/dashboard/risk-card";
-import { WorkloadCard } from "@/components/dashboard/workload-card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { demoDashboard } from "@/data/demo";
-import { useCurrentProjectId, useProject } from "@/data/queries";
+import { Card, CardBody } from "@/components/ui/card";
+import { useCurrentProject } from "@/data/current-project";
+import {
+  useMilestones,
+  useProject,
+  useTasks,
+} from "@/data/queries";
+import { buildDashboardMetrics } from "@/lib/dashboard-metrics";
 
 /**
- * Дашборд остаётся на демо-данных: оба его источника —
- * `GET /projects/{id}/dashboard` и `GET /projects/{id}/workload` — на бэкенде
- * пока возвращают 501. Шапка при этом уже берёт реальный проект, чтобы название
- * и код не расходились с остальными экранами.
+ * Обзор и аналитика.
+ *
+ * Эндпоинт `/projects/{id}/dashboard` пока возвращает 501, поэтому показатели
+ * считаются на клиенте из задач, вех и карточки проекта — все три источника
+ * реализованы. Блоки, у которых источника нет вовсе (риски, скорость команды,
+ * загрузка в часах), не заполняются выдуманными числами, а честно помечены
+ * как ожидающие бэкенд.
  */
 export default function OverviewPage() {
-  const { projectId, isEmpty, error } = useCurrentProjectId();
+  const { projectId, isEmpty, error } = useCurrentProject();
   const project = useProject(projectId);
+  const tasks = useTasks(projectId);
+  const milestones = useMilestones(projectId);
 
   if (error) return <PageError error={error} />;
   if (isEmpty) return <EmptyProjects />;
+  if (project.error) return <PageError error={project.error} />;
+  if (tasks.error) return <PageError error={tasks.error} />;
+  if (!project.data || !tasks.data) return <PageLoading />;
 
-  const data = demoDashboard;
-  const code = project.data?.code ?? data.project.code;
-  const phase = project.data?.phase ?? data.project.phase;
+  const metrics = buildDashboardMetrics({
+    project: project.data,
+    tasks: tasks.data,
+    milestones: milestones.data ?? [],
+    today: new Date(),
+  });
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs tracking-wide text-ink-faint uppercase">
-              Проект #{code}
-            </span>
-            {phase ? (
-              <Badge tone="brand" size="sm" className="font-semibold tracking-wide uppercase">
-                {phase}
-              </Badge>
-            ) : null}
+      <div className="min-w-0">
+        <p className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-xs tracking-wide text-ink-faint uppercase">
+            Проект #{project.data.code}
+          </span>
+          {project.data.phase ? (
+            <Badge tone="brand" size="sm" className="font-semibold tracking-wide uppercase">
+              {project.data.phase}
+            </Badge>
+          ) : null}
+        </p>
+        <h1 className="mt-1.5 max-w-lg text-2xl leading-tight font-bold tracking-tight text-ink">
+          Мониторинг здоровья и контрольных сроков
+        </h1>
+      </div>
+
+      <KpiCards metrics={metrics} project={project.data} />
+
+      {milestones.data && milestones.data.length > 0 ? (
+        <MilestonesStrip milestones={milestones.data} />
+      ) : null}
+
+      <AttentionTasks tasks={metrics.laggingTasks} />
+
+      <Card>
+        <CardBody className="flex items-start gap-3 py-4">
+          <PlugZap className="mt-0.5 size-4 shrink-0 text-warning" />
+          <p className="text-[13px] text-ink-muted">
+            <span className="font-semibold text-ink">
+              Риски, скорость команды и загрузка по часам появятся здесь
+            </span>{" "}
+            после реализации <code className="font-mono">/projects/{"{id}"}/dashboard</code>{" "}
+            и <code className="font-mono">/workload</code> — сейчас эти эндпоинты
+            возвращают 501. Вёрстка блоков готова и подключится без изменений экрана.
           </p>
-          <h1 className="mt-1.5 max-w-lg text-2xl leading-tight font-bold tracking-tight text-ink">
-            Мониторинг здоровья и контрольных сроков
-          </h1>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button variant="secondary">
-            <GitBranch />
-            Смоделировать сценарий
-          </Button>
-          <Button variant="secondary">
-            <Bell />
-            Уведомить исполнителей
-          </Button>
-          <Button>
-            <FileBarChart />
-            Отчёт для жюри ТПУ
-          </Button>
-        </div>
-      </div>
-
-      <DemoDataNotice>
-        Показатели демонстрационные: эндпоинты{" "}
-        <code className="font-mono">/dashboard</code> и{" "}
-        <code className="font-mono">/workload</code> на бэкенде ещё возвращают 501.
-        Экран переключится на реальные данные без правок вёрстки.
-      </DemoDataNotice>
-
-      <KpiCards data={data} />
-      <MilestonesStrip milestones={data.nearestMilestones} />
-
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <div className="space-y-4">
-          {data.risks.map((risk) => (
-            <RiskCard key={risk.title} risk={risk} />
-          ))}
-          <AttentionTasks tasks={data.attentionTasks} />
-        </div>
-        <WorkloadCard workload={data.teamWorkload} />
-      </div>
+        </CardBody>
+      </Card>
     </div>
   );
 }

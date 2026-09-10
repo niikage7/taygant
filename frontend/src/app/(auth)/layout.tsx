@@ -16,7 +16,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      <p className="relative mt-6 text-xs text-ink-faint">© 2026 taygantt</p>
+      <p className="relative mt-6 text-xs text-ink-faint">© 2026 taygant</p>
     </div>
   );
 }

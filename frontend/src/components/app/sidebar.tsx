@@ -5,15 +5,14 @@ import {
   CirclePlus,
   GitBranch,
   LineChart,
-  Settings,
-  TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ComponentType } from "react";
 
 import { LogoMark } from "@/components/brand/logo";
-import { Progress } from "@/components/ui/progress";
+import { ProjectSwitcher } from "@/components/app/project-switcher";
+import type { ProjectSummary } from "@/types";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -42,14 +41,14 @@ function navItems(detailsHref: string | null): (NavItem & { disabled?: boolean }
 }
 
 export function Sidebar({
-  projectName,
-  healthIndex,
-  criticalRisksCount,
+  projects,
+  currentProjectId,
+  onSelectProject,
   detailsHref = null,
 }: {
-  projectName: string;
-  healthIndex: number;
-  criticalRisksCount: number;
+  projects: ProjectSummary[];
+  currentProjectId: string | undefined;
+  onSelectProject: (projectId: string) => void;
   /** Адрес первой задачи проекта для пункта «Детали и Зависимости». */
   detailsHref?: string | null;
 }) {
@@ -63,14 +62,7 @@ export function Sidebar({
         className="flex items-center gap-2.5 px-4 py-3.5 focus-visible:focus-ring"
       >
         <LogoMark className="size-8" />
-        <span className="min-w-0">
-          <span className="block text-sm leading-tight font-bold text-ink">
-            ПроектКонтроль
-          </span>
-          <span className="block text-[10px] font-semibold tracking-wider text-brand uppercase">
-            ТПУ Enterprise
-          </span>
-        </span>
+        <span className="min-w-0 truncate text-sm font-bold text-ink">taygant</span>
       </Link>
 
       <nav className="flex-1 px-2 pt-3" aria-label="Разделы проекта">
@@ -120,25 +112,11 @@ export function Sidebar({
       </nav>
 
       <div className="border-t border-line p-4">
-        <div className="rounded-control border border-line p-3">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-[11px] font-semibold tracking-wider text-ink-faint uppercase">
-              {projectName}
-            </span>
-            <span className="text-xs font-bold text-brand">{healthIndex}%</span>
-          </div>
-          <Progress
-            value={healthIndex}
-            className="mt-2 h-1.5"
-            label="Индекс здоровья проекта"
-          />
-          {criticalRisksCount > 0 ? (
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-danger">
-              <TriangleAlert className="size-3.5 shrink-0" />
-              {criticalRisksCount} критический риск
-            </p>
-          ) : null}
-        </div>
+        <ProjectSwitcher
+          projects={projects}
+          currentProjectId={currentProjectId}
+          onSelect={onSelectProject}
+        />
 
         <div className="mt-4 flex items-center justify-between gap-2">
           <span className="text-[11px] font-semibold tracking-wider text-ink-faint uppercase">
@@ -156,14 +134,6 @@ export function Sidebar({
             ))}
           </span>
         </div>
-
-        <button
-          type="button"
-          className="mt-3 flex items-center gap-2.5 rounded-control text-sm text-ink-muted transition-colors hover:text-ink focus-visible:focus-ring"
-        >
-          <Settings className="size-4" />
-          Параметры системы
-        </button>
       </div>
     </aside>
   );

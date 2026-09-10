@@ -37,28 +37,6 @@ export function useProjects(): UseQueryResult<ProjectSummary[]> {
   });
 }
 
-/**
- * Текущий проект — первый доступный пользователю.
- *
- * Выбора проекта в макетах нет, а все внутренние экраны работают в контексте
- * одного проекта, поэтому берём первый из списка. Когда появится переключатель,
- * менять нужно будет только этот хук.
- */
-export function useCurrentProjectId(): {
-  projectId: string | undefined;
-  isLoading: boolean;
-  isEmpty: boolean;
-  error: Error | null;
-} {
-  const projects = useProjects();
-  return {
-    projectId: projects.data?.[0]?.id,
-    isLoading: projects.isPending,
-    isEmpty: projects.isSuccess && projects.data.length === 0,
-    error: projects.error,
-  };
-}
-
 export function useProject(projectId: string | undefined): UseQueryResult<Project> {
   return useQuery({
     queryKey: queryKeys.project(projectId ?? ""),
