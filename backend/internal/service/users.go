@@ -54,6 +54,6 @@ func (s *Users) List(ctx context.Context, search string) ([]models.User, error) 
 
 // escapeLikePattern обезвреживает символы шаблона LIKE во вводе пользователя.
 func escapeLikePattern(s string) string {
-	replacer := strings.NewReplacer(`\`, `\`, `%`, `\%`, `_`, `\_`)
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return replacer.Replace(s)
 }
