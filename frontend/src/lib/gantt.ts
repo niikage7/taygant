@@ -56,7 +56,14 @@ export function spanPx(range: TimelineRange, startIso: string, endIso: string): 
   return Math.max(days, 1) * range.pxPerDay;
 }
 
-export type TimelineColumn = { key: string; label: string; left: number; width: number };
+export type TimelineColumn = {
+  key: string;
+  label: string;
+  /** Короткая подпись для узких колонок (например, «авг 26»). */
+  shortLabel?: string;
+  left: number;
+  width: number;
+};
 
 /** Верхний ряд шапки — месяцы. */
 export function monthColumns(range: TimelineRange): TimelineColumn[] {
@@ -70,6 +77,7 @@ export function monthColumns(range: TimelineRange): TimelineColumn[] {
     columns.push({
       key: format(day, "yyyy-MM-dd"),
       label: format(day, "LLLL yyyy", { locale: ru }),
+      shortLabel: format(day, "LLL yy", { locale: ru }),
       left: differenceInCalendarDays(day, range.start) * range.pxPerDay,
       width: range.pxPerDay,
     });

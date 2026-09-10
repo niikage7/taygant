@@ -6,7 +6,6 @@ import { useState } from "react";
 import { CreateTaskDialog } from "@/components/gantt/create-task-dialog";
 import { TaskTable } from "@/components/gantt/task-table";
 import { Timeline } from "@/components/gantt/timeline";
-import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/utils";
 import type { TimeScale } from "@/lib/gantt";
@@ -88,19 +87,6 @@ export function GanttBoard({
             icon={<CircleAlert className="size-3.5" />}
             label="Только риски"
             tone="warning"
-          />
-        </span>
-
-        <span className="ml-auto flex items-center gap-2">
-          <CreateTaskDialog
-            projectId={project.id}
-            projectTasks={tasks}
-            trigger={
-              <Button>
-                <Plus />
-                Задача
-              </Button>
-            }
           />
         </span>
       </div>
