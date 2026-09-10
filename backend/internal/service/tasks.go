@@ -538,7 +538,13 @@ func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskIn
 			if err := validateSprintAndParent(tx, task.ProjectID, in.SprintID, nil); err != nil {
 				return err
 			}
+			old := task.SprintID
 			task.SprintID = in.SprintID
+			if !uuidPtrEqual(old, in.SprintID) {
+				if err := recordHistory(tx, taskID, actorID, models.HistoryActionUpdated, strPtr("sprintId"), uuidPtrString(old), uuidPtrString(in.SprintID)); err != nil {
+					return err
+				}
+			}
 		}
 		if in.Title != nil {
 			title := strings.TrimSpace(*in.Title)
@@ -548,10 +554,23 @@ func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskIn
 			if err := checkMaxLen("название задачи", title, 255); err != nil {
 				return err
 			}
-			task.Title = title
+			if task.Title != title {
+				old := task.Title
+				task.Title = title
+				if err := recordHistory(tx, taskID, actorID, models.HistoryActionUpdated, strPtr("title"), &old, &title); err != nil {
+					return err
+				}
+			}
 		}
 		if in.Description != nil {
-			task.Description = strings.TrimSpace(*in.Description)
+			description := strings.TrimSpace(*in.Description)
+			if task.Description != description {
+				old := task.Description
+				task.Description = description
+				if err := recordHistory(tx, taskID, actorID, models.HistoryActionUpdated, strPtr("description"), &old, &description); err != nil {
+					return err
+				}
+			}
 		}
 		if in.AssigneeID != nil {
 			if err := validateAssignee(tx, task.ProjectID, *in.AssigneeID); err != nil {
@@ -569,13 +588,25 @@ func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskIn
 			if in.StartDate.IsZero() {
 				return Invalid("дата начала не может быть пустой")
 			}
-			task.StartDate = *in.StartDate
+			if !task.StartDate.Equal(*in.StartDate) {
+				oldStart, newStart := task.StartDate.String(), in.StartDate.String()
+				task.StartDate = *in.StartDate
+				if err := recordHistory(tx, taskID, actorID, models.HistoryActionDateShifted, strPtr("startDate"), &oldStart, &newStart); err != nil {
+					return err
+				}
+			}
 		}
 		if in.EndDate != nil {
 			if in.EndDate.IsZero() {
 				return Invalid("дата окончания не может быть пустой")
 			}
-			task.EndDate = *in.EndDate
+			if !task.EndDate.Equal(*in.EndDate) {
+				oldEnd, newEnd := task.EndDate.String(), in.EndDate.String()
+				task.EndDate = *in.EndDate
+				if err := recordHistory(tx, taskID, actorID, models.HistoryActionDateShifted, strPtr("endDate"), &oldEnd, &newEnd); err != nil {
+					return err
+				}
+			}
 		}
 		if task.EndDate.Before(task.StartDate) {
 			return Invalid("дата окончания не может быть раньше даты начала")
@@ -584,13 +615,27 @@ func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskIn
 			if *in.ProgressPercent < 0 || *in.ProgressPercent > 100 {
 				return Invalid("процент выполнения должен быть от 0 до 100")
 			}
-			task.ProgressPercent = *in.ProgressPercent
+			if task.ProgressPercent != *in.ProgressPercent {
+				old := strconv.Itoa(task.ProgressPercent)
+				newValue := strconv.Itoa(*in.ProgressPercent)
+				task.ProgressPercent = *in.ProgressPercent
+				if err := recordHistory(tx, taskID, actorID, models.HistoryActionProgressSet, strPtr("progressPercent"), &old, &newValue); err != nil {
+					return err
+				}
+			}
 		}
 		if in.WeightPercent != nil {
 			if *in.WeightPercent < 0 || *in.WeightPercent > 100 {
 				return Invalid("вес задачи должен быть от 0 до 100")
 			}
-			task.WeightPercent = *in.WeightPercent
+			if task.WeightPercent != *in.WeightPercent {
+				old := strconv.FormatFloat(task.WeightPercent, 'f', -1, 64)
+				newValue := strconv.FormatFloat(*in.WeightPercent, 'f', -1, 64)
+				task.WeightPercent = *in.WeightPercent
+				if err := recordHistory(tx, taskID, actorID, models.HistoryActionUpdated, strPtr("weightPercent"), &old, &newValue); err != nil {
+					return err
+				}
+			}
 		}
 		if in.Status != nil {
 			if !userSettableStatus(*in.Status) {

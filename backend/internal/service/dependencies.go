@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -65,7 +66,7 @@ func (s *Dependencies) List(ctx context.Context, taskID uuid.UUID) (predecessors
 
 // Create связывает currentTaskID с relatedTaskID согласно direction: "predecessor"
 // значит relatedTaskID предшествует текущей задаче, "successor" — наоборот.
-func (s *Dependencies) Create(ctx context.Context, projectID, currentTaskID, relatedTaskID uuid.UUID, direction string, depType models.DependencyType, lagDays int) (models.TaskDependency, error) {
+func (s *Dependencies) Create(ctx context.Context, projectID, actorID, currentTaskID, relatedTaskID uuid.UUID, direction string, depType models.DependencyType, lagDays int) (models.TaskDependency, error) {
 	predecessorID, successorID := currentTaskID, relatedTaskID
 	if direction == "predecessor" {
 		predecessorID, successorID = relatedTaskID, currentTaskID
@@ -77,12 +78,26 @@ func (s *Dependencies) Create(ctx context.Context, projectID, currentTaskID, rel
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
 		dep, err = createDependencyRow(ctx, tx, projectID, predecessorID, successorID, depType, lagDays)
-		return err
+		if err != nil {
+			return err
+		}
+		return recordDependencyHistory(tx, actorID, models.HistoryActionDependencyAdd, dep)
 	})
 	if err != nil {
 		return models.TaskDependency{}, err
 	}
 	return s.get(ctx, dep.ID)
+}
+
+// recordDependencyHistory пишет одну запись журнала для каждой из двух задач
+// связи: изменение зависимостей влияет на обе, а не только на ту, через
+// которую пришёл запрос.
+func recordDependencyHistory(tx *gorm.DB, actorID uuid.UUID, action string, dep models.TaskDependency) error {
+	value := fmt.Sprintf("%s: %s -> %s", dep.Type, dep.PredecessorTaskID, dep.SuccessorTaskID)
+	if err := recordHistory(tx, dep.PredecessorTaskID, actorID, action, strPtr("dependency"), nil, &value); err != nil {
+		return err
+	}
+	return recordHistory(tx, dep.SuccessorTaskID, actorID, action, strPtr("dependency"), nil, &value)
 }
 
 // createDependency — вариант createDependencyRow для случая, когда направление
@@ -159,15 +174,25 @@ func wouldCreateCycle(edges []models.TaskDependency, predecessorID, successorID 
 }
 
 // Delete разрывает связь между задачами.
-func (s *Dependencies) Delete(ctx context.Context, dependencyID uuid.UUID) error {
-	res := s.db.WithContext(ctx).Delete(&models.TaskDependency{}, "id = ?", dependencyID)
-	if res.Error != nil {
-		return fmt.Errorf("удалить связь: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+func (s *Dependencies) Delete(ctx context.Context, actorID, dependencyID uuid.UUID) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var dep models.TaskDependency
+		if err := tx.First(&dep, "id = ?", dependencyID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return fmt.Errorf("найти связь: %w", err)
+		}
+
+		res := tx.Delete(&models.TaskDependency{}, "id = ?", dependencyID)
+		if res.Error != nil {
+			return fmt.Errorf("удалить связь: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return ErrNotFound
+		}
+		return recordDependencyHistory(tx, actorID, models.HistoryActionDependencyDel, dep)
+	})
 }
 
 func (s *Dependencies) get(ctx context.Context, dependencyID uuid.UUID) (models.TaskDependency, error) {

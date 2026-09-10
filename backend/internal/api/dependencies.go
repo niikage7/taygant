@@ -73,7 +73,7 @@ func (a *API) dependenciesCreate(c *fiber.Ctx) error {
 		return err
 	}
 
-	dep, err := a.dependencies.Create(c.Context(), projectID, taskID, body.RelatedTaskID, body.Direction, body.Type, body.LagDays)
+	dep, err := a.dependencies.Create(c.Context(), projectID, currentUserID(c), taskID, body.RelatedTaskID, body.Direction, body.Type, body.LagDays)
 	if err != nil {
 		return fail(err)
 	}
@@ -99,7 +99,7 @@ func (a *API) dependenciesDelete(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := a.dependencies.Delete(c.Context(), dependencyID); err != nil {
+	if err := a.dependencies.Delete(c.Context(), currentUserID(c), dependencyID); err != nil {
 		return fail(err)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
