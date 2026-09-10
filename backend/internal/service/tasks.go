@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -394,17 +395,29 @@ func userSettableStatus(status models.TaskStatus) bool {
 // nextTaskCode и порядковый индекс — по числу существующих задач проекта.
 // Код не уникален на уровне БД (см. models.Task): при гонке двух параллельных
 // создателей возможно совпадение кода, что для MVP приемлемо.
+// nextTaskCode строит следующий код задачи по максимуму уже занятых номеров,
+// а не по числу существующих задач: задачи удаляются физически (без
+// DeletedAt), поэтому «количество + 1» после удаления повторно выдаёт номер,
+// который всё ещё занят одной из оставшихся задач.
 func nextTaskCode(tx *gorm.DB, projectID uuid.UUID) (string, int, error) {
-	var count int64
-	if err := tx.Model(&models.Task{}).Where("project_id = ?", projectID).Count(&count).Error; err != nil {
-		return "", 0, fmt.Errorf("посчитать задачи проекта: %w", err)
+	var codes []string
+	if err := tx.Model(&models.Task{}).Where("project_id = ?", projectID).Pluck("code", &codes).Error; err != nil {
+		return "", 0, fmt.Errorf("выбрать коды задач проекта: %w", err)
 	}
-	return fmt.Sprintf("TASK-%03d", count+1), int(count), nil
+	max := 0
+	for _, code := range codes {
+		if n, err := strconv.Atoi(strings.TrimPrefix(code, "TASK-")); err == nil && n > max {
+			max = n
+		}
+	}
+	return fmt.Sprintf("TASK-%03d", max+1), max, nil
 }
 
 // nextWBSNumber строит номер в иерархии работ: "N" для задач верхнего уровня,
-// "родительWBS.N" для подзадач — N считается по числу уже существующих
-// соседей с тем же родителем.
+// "родительWBS.N" для подзадач — N берётся как максимум последнего сегмента
+// среди уже существующих соседей с тем же родителем, а не их количество (та
+// же причина, что и у nextTaskCode: удаление задачи не должно освобождать
+// номер, которым всё ещё пользуется другая задача).
 func nextWBSNumber(tx *gorm.DB, projectID uuid.UUID, parentID *uuid.UUID) (string, error) {
 	query := tx.Model(&models.Task{}).Where("project_id = ?", projectID)
 	if parentID == nil {
@@ -412,13 +425,23 @@ func nextWBSNumber(tx *gorm.DB, projectID uuid.UUID, parentID *uuid.UUID) (strin
 	} else {
 		query = query.Where("parent_task_id = ?", *parentID)
 	}
-	var siblings int64
-	if err := query.Count(&siblings).Error; err != nil {
-		return "", fmt.Errorf("посчитать соседние задачи: %w", err)
+	var siblingNumbers []string
+	if err := query.Pluck("wbs_number", &siblingNumbers).Error; err != nil {
+		return "", fmt.Errorf("выбрать номера соседних задач: %w", err)
+	}
+	max := 0
+	for _, wbs := range siblingNumbers {
+		last := wbs
+		if idx := strings.LastIndex(wbs, "."); idx != -1 {
+			last = wbs[idx+1:]
+		}
+		if n, err := strconv.Atoi(last); err == nil && n > max {
+			max = n
+		}
 	}
 
 	if parentID == nil {
-		return fmt.Sprintf("%d", siblings+1), nil
+		return fmt.Sprintf("%d", max+1), nil
 	}
 	var parent models.Task
 	if err := tx.Select("wbs_number").First(&parent, "id = ?", *parentID).Error; err != nil {
@@ -427,7 +450,7 @@ func nextWBSNumber(tx *gorm.DB, projectID uuid.UUID, parentID *uuid.UUID) (strin
 		}
 		return "", fmt.Errorf("найти родительскую задачу: %w", err)
 	}
-	return fmt.Sprintf("%s.%d", parent.WBSNumber, siblings+1), nil
+	return fmt.Sprintf("%s.%d", parent.WBSNumber, max+1), nil
 }
 
 func validateSprintAndParent(tx *gorm.DB, projectID uuid.UUID, sprintID, parentID *uuid.UUID) error {

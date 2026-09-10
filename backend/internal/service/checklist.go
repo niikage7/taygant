@@ -46,11 +46,18 @@ func (s *Checklist) Add(ctx context.Context, taskID, actorID uuid.UUID, text str
 
 	var item models.ChecklistItem
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var count int64
-		if err := tx.Model(&models.ChecklistItem{}).Where("task_id = ?", taskID).Count(&count).Error; err != nil {
+		// Максимум существующего OrderIndex, а не количество пунктов: удаление
+		// пункта не должно освобождать индекс, всё ещё занятый другим пунктом
+		// (та же ошибка, что и в nextTaskCode/nextWBSNumber).
+		var maxOrder *int
+		if err := tx.Model(&models.ChecklistItem{}).Where("task_id = ?", taskID).Select("MAX(order_index)").Scan(&maxOrder).Error; err != nil {
 			return fmt.Errorf("посчитать пункты чек-листа: %w", err)
 		}
-		item = models.ChecklistItem{TaskID: taskID, Text: text, OrderIndex: int(count)}
+		nextOrder := 0
+		if maxOrder != nil {
+			nextOrder = *maxOrder + 1
+		}
+		item = models.ChecklistItem{TaskID: taskID, Text: text, OrderIndex: nextOrder}
 		if err := tx.Create(&item).Error; err != nil {
 			return fmt.Errorf("создать пункт чек-листа: %w", err)
 		}
