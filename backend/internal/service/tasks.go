@@ -262,7 +262,7 @@ func workingDaysBetween(start, end models.Date, calendar models.WorkingCalendarT
 	days := 0
 	for d := start; !d.After(end); d = d.AddDays(1) {
 		weekday := d.Weekday()
-		isWorking := weekday != 0 && weekday != 6 // вс всегда выходной
+		isWorking := weekday != 0 // вс всегда выходной
 		if calendar == models.Calendar52 && weekday == 6 {
 			isWorking = false
 		}
