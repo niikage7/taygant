@@ -1,20 +1,27 @@
 "use client";
 
+"use client";
+
 import {
   BarChart3,
+  CircleAlert,
   CirclePlus,
+  Download,
   GitBranch,
   LineChart,
   Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ComponentType } from "react";
+import { useState, type ComponentType } from "react";
 
 import { LogoMark } from "@/components/brand/logo";
 import { ProjectSwitcher } from "@/components/app/project-switcher";
-import type { ProjectSummary } from "@/types";
+import { useCurrentProject } from "@/data/current-project";
+import { toUserMessage } from "@/lib/api-error-message";
 import { cn } from "@/lib/utils";
+import { exportService } from "@/services";
+import type { ExportFormat, ProjectSummary } from "@/types";
 
 type NavItem = {
   href: string;
@@ -56,6 +63,28 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const items = navItems(detailsHref);
+  const { projectId } = useCurrentProject();
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const download = async (format: ExportFormat) => {
+    if (!projectId || exporting) return;
+    setExporting(format);
+    setExportError(null);
+    try {
+      const { blob, filename } = await exportService.export(projectId, format);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setExportError(toUserMessage(error, {}, "Не удалось подготовить файл"));
+    } finally {
+      setExporting(null);
+    }
+  };
 
   return (
     <aside className="flex w-70 shrink-0 flex-col border-r border-line bg-surface">
@@ -121,21 +150,31 @@ export function Sidebar({
         />
 
         <div className="mt-4 flex items-center justify-between gap-2">
-          <span className="text-[11px] font-semibold tracking-wider text-ink-faint uppercase">
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-ink-faint uppercase">
+            <Download className="size-3.5 shrink-0" />
             Экспорт
           </span>
           <span className="flex gap-1.5">
-            {["PDF", "XLSX"].map((format) => (
+            {(["pdf", "xlsx"] as ExportFormat[]).map((format) => (
               <button
                 key={format}
                 type="button"
-                className="rounded-control border border-line px-2 py-1 text-[11px] font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink focus-visible:focus-ring"
+                onClick={() => void download(format)}
+                disabled={exporting !== null}
+                title={projectId ? undefined : "Сначала выберите проект"}
+                className="rounded-control border border-line px-2 py-1 text-[11px] font-medium uppercase text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed focus-visible:focus-ring"
               >
-                {format}
+                {exporting === format ? "…" : format}
               </button>
             ))}
           </span>
         </div>
+        {exportError ? (
+          <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-danger">
+            <CircleAlert className="size-3.5 shrink-0" />
+            {exportError}
+          </p>
+        ) : null}
       </div>
     </aside>
   );

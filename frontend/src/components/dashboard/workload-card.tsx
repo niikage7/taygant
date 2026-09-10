@@ -1,8 +1,7 @@
 /**
  * Загрузка команды текущего спринта.
  *
- * ⚠️ Пока не подключён: часы приходят из `GET /projects/{id}/workload`,
- * который возвращает 501. Компонент готов и ждёт эндпоинт.
+ * Данные приходят из `GET /projects/{id}/workload` (по умолчанию — текущий спринт).
  */
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
@@ -17,14 +16,19 @@ export function WorkloadCard({ workload }: { workload: MemberWorkload[] }) {
       <CardHeader className="items-start">
         <div>
           <CardTitle>Нагрузка команды</CardTitle>
-          <p className="mt-0.5 text-[13px] text-ink-muted">Текущий спринт №4</p>
+          <p className="mt-0.5 text-[13px] text-ink-muted">Текущий спринт</p>
         </div>
-        <span className="text-xs text-ink-faint">Лимит: 40ч / нед</span>
+        {workload.length > 0 ? (
+          <span className="text-xs text-ink-faint">
+            Лимиты — по участникам
+          </span>
+        ) : null}
       </CardHeader>
       <CardBody className="flex-1 space-y-2">
         {workload.map((item) => {
           const overloaded = item.utilizationPercent > 100;
-          const free = item.weeklyHoursLimit - item.assignedHoursPerWeek;
+          const assigned = Math.round(item.assignedHoursPerWeek);
+          const free = item.weeklyHoursLimit - assigned;
           return (
             <div
               key={item.user.id}
@@ -52,7 +56,7 @@ export function WorkloadCard({ workload }: { workload: MemberWorkload[] }) {
                     {item.utilizationPercent}%
                   </p>
                   <p className="text-xs text-ink-faint">
-                    {item.assignedHoursPerWeek} ч / нед
+                    {assigned} ч / нед
                     {!overloaded && free > 0 ? " (есть слот)" : ""}
                   </p>
                 </div>

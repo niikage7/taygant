@@ -1,6 +1,6 @@
 "use client";
 
-import { Flag, PlugZap } from "lucide-react";
+import { Flag } from "lucide-react";
 
 import { EmptyProjects, PageError, PageLoading } from "@/components/app/page-state";
 import { AttentionTasks } from "@/components/dashboard/attention-tasks";
@@ -11,34 +11,33 @@ import { RiskCard } from "@/components/dashboard/risk-card";
 import { WorkloadCard } from "@/components/dashboard/workload-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardBody } from "@/components/ui/card";
 import { useCurrentProject } from "@/data/current-project";
 import { useProjectAccess } from "@/data/project-access";
-import { useDashboard, useProject } from "@/data/queries";
+import { useDashboard, useProject, useWorkload } from "@/data/queries";
 
 /**
- * Обзор и аналитика — данные из `GET /projects/{id}/dashboard`.
+ * Обзор и аналитика — данные из `GET /projects/{id}/dashboard` и
+ * `GET /projects/{id}/workload`.
  *
- * Два поля ответа бэкенд заполнить не может и честно об этом пишет:
- * `progressDeltaPercent` всегда 0 (нет исторических снимков прогресса) и
- * `teamWorkload` всегда пуст (в задачах нет оценки часов, а `/workload`
- * возвращает 501). Поэтому дельту не показываем вовсе, а карточку загрузки —
- * только когда список непустой.
+ * Поле `teamWorkload` в ответе дашборда бэкенд отдаёт пустым — загрузка
+ * команды берётся отдельным эндпоинтом `/workload` (по текущему спринту).
  */
 export default function OverviewPage() {
   const { projectId, isEmpty, error } = useCurrentProject();
   const project = useProject(projectId);
   const dashboard = useDashboard(projectId);
   const access = useProjectAccess();
+  const workload = useWorkload(projectId);
 
   if (error) return <PageError error={error} />;
   if (isEmpty) return <EmptyProjects />;
   if (project.error) return <PageError error={project.error} />;
   if (dashboard.error) return <PageError error={dashboard.error} />;
-  if (!project.data || !dashboard.data) return <PageLoading />;
+  if (workload.error) return <PageError error={workload.error} />;
+  if (!project.data || !dashboard.data || !workload.data) return <PageLoading />;
 
   const data = dashboard.data;
-  const hasWorkload = data.teamWorkload.length > 0;
+  const workloadItems = workload.data;
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-4">
@@ -77,31 +76,15 @@ export default function OverviewPage() {
         }
       />
 
-      <div className={hasWorkload ? "grid gap-4 lg:grid-cols-[1.4fr_1fr]" : "space-y-4"}>
+      <div className={workloadItems.length > 0 ? "grid gap-4 lg:grid-cols-[1.4fr_1fr]" : "space-y-4"}>
         <div className="space-y-4">
           {data.risks.map((risk) => (
             <RiskCard key={risk.title} risk={risk} />
           ))}
           <AttentionTasks tasks={data.attentionTasks} />
         </div>
-        {hasWorkload ? <WorkloadCard workload={data.teamWorkload} /> : null}
+        {workloadItems.length > 0 ? <WorkloadCard workload={workloadItems} /> : null}
       </div>
-
-      {!hasWorkload ? (
-        <Card>
-          <CardBody className="flex items-start gap-3 py-4">
-            <PlugZap className="mt-0.5 size-4 shrink-0 text-warning" />
-            <p className="text-[13px] text-ink-muted">
-              <span className="font-semibold text-ink">
-                Загрузка команды по часам появится здесь
-              </span>{" "}
-              после реализации <code className="font-mono">/projects/{"{id}"}/workload</code>:
-              сейчас эндпоинт возвращает 501, а в задачах нет оценки трудозатрат, поэтому бэкенд
-              отдаёт пустой список. Вёрстка карточки готова.
-            </p>
-          </CardBody>
-        </Card>
-      ) : null}
     </div>
   );
 }

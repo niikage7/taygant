@@ -14,6 +14,7 @@ import {
   projectsService,
   tasksService,
   usersService,
+  workloadService,
 } from "@/services";
 import type {
   Comment,
@@ -21,6 +22,7 @@ import type {
   GanttScale,
   HistoryEntry,
   ApplyShiftRequest,
+  MemberWorkload,
   MilestoneCreateRequest,
   Project,
   ProjectDashboard,
@@ -43,8 +45,7 @@ import type {
  *
  * Состояние бэкенда на момент написания (см. `backend/internal/api/`):
  * реализованы projects, tasks (включая `/gantt`), dependencies, milestones,
- * members, sprints, checklist, comments, history, users и auth.
- * Возвращают 501 только `workload` и `export`.
+ * members, sprints, checklist, comments, history, users, auth, workload и export.
  */
 
 export const queryKeys = {
@@ -57,6 +58,7 @@ export const queryKeys = {
   taskHistory: (taskId: string) => ["tasks", taskId, "history"] as const,
   taskComments: (taskId: string) => ["tasks", taskId, "comments"] as const,
   dashboard: (projectId: string) => ["projects", projectId, "dashboard"] as const,
+  workload: (projectId: string) => ["projects", projectId, "workload"] as const,
   members: (projectId: string) => ["projects", projectId, "members"] as const,
   users: (search: string) => ["users", search] as const,
   task: (taskId: string) => ["tasks", taskId] as const,
@@ -264,6 +266,15 @@ export function useDashboard(projectId: string | undefined): UseQueryResult<Proj
   return useQuery({
     queryKey: queryKeys.dashboard(projectId ?? ""),
     queryFn: () => dashboardService.get(projectId as string),
+    enabled: Boolean(projectId),
+  });
+}
+
+/** Загрузка команды по текущему спринту (`GET /projects/{id}/workload`). */
+export function useWorkload(projectId: string | undefined): UseQueryResult<MemberWorkload[]> {
+  return useQuery({
+    queryKey: queryKeys.workload(projectId ?? ""),
+    queryFn: () => workloadService.list(projectId as string),
     enabled: Boolean(projectId),
   });
 }

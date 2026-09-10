@@ -115,11 +115,17 @@ async function request<T>(
   return data as T;
 }
 
+export type BlobResponse = {
+  blob: Blob;
+  /** Значение Content-Disposition, если сервер его прислал (для имени скачиваемого файла). */
+  contentDisposition: string | null;
+};
+
 async function requestBlob(
   method: string,
   path: string,
   options: RequestOptions = {},
-): Promise<Blob> {
+): Promise<BlobResponse> {
   const { query, signal, auth = true } = options;
   const headers: Record<string, string> = {};
 
@@ -138,7 +144,10 @@ async function requestBlob(
     throw new ApiError(res.status, await parseErrorMessage(res, data), data);
   }
 
-  return res.blob();
+  return {
+    blob: await res.blob(),
+    contentDisposition: res.headers.get("content-disposition"),
+  };
 }
 
 export const httpClient = {
