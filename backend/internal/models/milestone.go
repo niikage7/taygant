@@ -22,6 +22,10 @@ type Milestone struct {
 	ActualDate *Date `gorm:"type:date"`
 
 	Status MilestoneStatus `gorm:"type:varchar(20);not null"`
+
+	// RiskDays — не хранится: пересчитывается при каждом чтении из PlannedDate
+	// и текущей даты, как и Status. gorm:"-" исключает поле из миграции и запросов.
+	RiskDays *int `gorm:"-"`
 }
 
 // TableName фиксирует имя таблицы.

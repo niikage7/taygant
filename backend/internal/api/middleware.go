@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
+	"taygant_backend/internal/access"
 	"taygant_backend/internal/auth"
 	"taygant_backend/internal/models"
 )
@@ -74,4 +75,62 @@ func currentUserID(c *fiber.Ctx) uuid.UUID {
 func currentUser(c *fiber.Ctx) models.User {
 	user, _ := c.Locals(localsUser).(models.User)
 	return user
+}
+
+// requireMember проверяет, что пользователь состоит в команде проекта, и
+// возвращает загруженные проект и запись участника — их почти всегда нужно
+// использовать дальше (например, для расчёта сводных показателей).
+func (a *API) requireMember(c *fiber.Ctx, projectID uuid.UUID) (access.Membership, error) {
+	m, err := access.Load(c.Context(), a.db, projectID, currentUserID(c))
+	if err != nil {
+		return access.Membership{}, fail(err)
+	}
+	return m, nil
+}
+
+// requireEdit — то же, что requireMember, но дополнительно проверяет право
+// редактировать план проекта (задачи, спринты, вехи, чек-лист, связи).
+func (a *API) requireEdit(c *fiber.Ctx, projectID uuid.UUID) error {
+	m, err := a.requireMember(c, projectID)
+	if err != nil {
+		return err
+	}
+	return fail(m.RequireEdit())
+}
+
+// requireManage — то же, что requireMember, но дополнительно проверяет право
+// управлять проектом и его командой (уровень доступа full).
+func (a *API) requireManage(c *fiber.Ctx, projectID uuid.UUID) (access.Membership, error) {
+	m, err := a.requireMember(c, projectID)
+	if err != nil {
+		return access.Membership{}, err
+	}
+	if err := fail(m.RequireManage()); err != nil {
+		return access.Membership{}, err
+	}
+	return m, nil
+}
+
+// requireEditByTask резолвит projectId по задаче и проверяет право её редактировать.
+// Используется хендлерами вложенных ресурсов (dependencies, checklist, comments,
+// history), которые адресуются taskId без projectId в пути.
+func (a *API) requireEditByTask(c *fiber.Ctx, taskID uuid.UUID) (uuid.UUID, error) {
+	projectID, err := a.tasks.ProjectID(c.Context(), taskID)
+	if err != nil {
+		return uuid.Nil, fail(err)
+	}
+	return projectID, a.requireEdit(c, projectID)
+}
+
+// requireMemberByTask — то же, что requireEditByTask, но только для чтения:
+// достаточно быть участником проекта, редактировать не обязательно.
+func (a *API) requireMemberByTask(c *fiber.Ctx, taskID uuid.UUID) (uuid.UUID, error) {
+	projectID, err := a.tasks.ProjectID(c.Context(), taskID)
+	if err != nil {
+		return uuid.Nil, fail(err)
+	}
+	if _, err := a.requireMember(c, projectID); err != nil {
+		return uuid.Nil, err
+	}
+	return projectID, nil
 }

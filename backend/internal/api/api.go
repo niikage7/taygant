@@ -18,8 +18,17 @@ type API struct {
 	cfg    config.Config
 	tokens *auth.TokenIssuer
 
-	auth  *service.Auth
-	users *service.Users
+	auth         *service.Auth
+	users        *service.Users
+	projects     *service.Projects
+	members      *service.Members
+	sprints      *service.Sprints
+	milestones   *service.Milestones
+	tasks        *service.Tasks
+	dependencies *service.Dependencies
+	checklist    *service.Checklist
+	comments     *service.Comments
+	history      *service.History
 }
 
 // New собирает HTTP-слой поверх готового подключения к БД.
@@ -27,11 +36,20 @@ func New(db *gorm.DB, cfg config.Config) *API {
 	tokens := auth.NewTokenIssuer(cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 
 	return &API{
-		db:     db,
-		cfg:    cfg,
-		tokens: tokens,
-		auth:   service.NewAuth(db, tokens),
-		users:  service.NewUsers(db),
+		db:           db,
+		cfg:          cfg,
+		tokens:       tokens,
+		auth:         service.NewAuth(db, tokens),
+		users:        service.NewUsers(db),
+		projects:     service.NewProjects(db),
+		members:      service.NewMembers(db),
+		sprints:      service.NewSprints(db),
+		milestones:   service.NewMilestones(db),
+		tasks:        service.NewTasks(db),
+		dependencies: service.NewDependencies(db),
+		checklist:    service.NewChecklist(db),
+		comments:     service.NewComments(db),
+		history:      service.NewHistory(db),
 	}
 }
 

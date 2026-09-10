@@ -57,3 +57,24 @@ func pathUUID(c *fiber.Ctx, name string) (uuid.UUID, error) {
 	}
 	return id, nil
 }
+
+// queryUUID читает необязательный UUID из query-параметра. Пустое значение —
+// не ошибка (параметр просто не передан), а нераспознанный формат — 400,
+// иначе опечатка в фильтре молча вернула бы «ничего не найдено».
+func queryUUID(c *fiber.Ctx, name string) (*uuid.UUID, error) {
+	raw := c.Query(name)
+	if raw == "" {
+		return nil, nil
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return nil, fiber.NewError(fiber.StatusBadRequest, "некорректный идентификатор в параметре "+name)
+	}
+	return &id, nil
+}
+
+// queryBool читает query-параметр вида ?flag=true. Любое значение, кроме "true",
+// трактуется как false — так withDefault-парсинг не нужен ни в одном хендлере.
+func queryBool(c *fiber.Ctx, name string) bool {
+	return c.Query(name) == "true"
+}

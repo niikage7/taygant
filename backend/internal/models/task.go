@@ -62,10 +62,34 @@ type Task struct {
 	ExternalURL         string `gorm:"type:text"`
 	ExternalReferenceID string `gorm:"type:varchar(64)"`
 	ExternalSynced      bool   `gorm:"not null;default:false"`
+
+	// Ниже — производные поля из комментария выше. gorm:"-" исключает их из
+	// миграции и запросов: сервис задач (internal/service) заполняет их при
+	// чтении, а не хранит. IsCriticalPath пока всегда false — CPM-движок
+	// (internal/schedule) ещё не реализован.
+	DurationCalendarDays int  `gorm:"-"`
+	DurationWorkingDays  int  `gorm:"-"`
+	IsCriticalPath       bool `gorm:"-"`
 }
 
 // TableName фиксирует имя таблицы.
 func (Task) TableName() string { return "tasks" }
+
+// PlanVsActualDeviation — отклонение факта от плана в днях; положительное
+// значение — опережение графика, отрицательное — отставание.
+//
+// Полноценный расчёт (earned value) требует CPM-движка, которого пока нет,
+// поэтому для задач без фактических дат используется упрощённая эвристика:
+// просрочка планового конца без ActualEndDate уже читается как отставание.
+func (t Task) PlanVsActualDeviation() int {
+	if t.ActualEndDate != nil {
+		return t.ActualEndDate.DaysUntil(t.EndDate)
+	}
+	if today := Today(); today.After(t.EndDate) {
+		return -t.EndDate.DaysUntil(today)
+	}
+	return 0
+}
 
 // TaskDependency — связь между двумя задачами по методу критического пути.
 //

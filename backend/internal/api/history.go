@@ -10,5 +10,21 @@ func (a *API) registerHistoryRoutes(r fiber.Router) {
 // GET /tasks/{taskId}/history — хронологический список изменений полей задачи с автором действия.
 // 200 -> []HistoryEntry.
 func (a *API) historyList(c *fiber.Ctx) error {
-	return notImplemented(c)
+	taskID, err := pathUUID(c, "taskId")
+	if err != nil {
+		return err
+	}
+	if _, err := a.requireMemberByTask(c, taskID); err != nil {
+		return err
+	}
+
+	entries, err := a.history.List(c.Context(), taskID)
+	if err != nil {
+		return fail(err)
+	}
+	out := make([]historyEntryDTO, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, newHistoryEntryDTO(e))
+	}
+	return c.JSON(out)
 }

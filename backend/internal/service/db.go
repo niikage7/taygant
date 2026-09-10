@@ -6,8 +6,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// pgUniqueViolation — код ошибки PostgreSQL «нарушение уникального ограничения».
-const pgUniqueViolation = "23505"
+// Коды ошибок PostgreSQL, которые сервисы превращают в понятные доменные ошибки.
+const (
+	pgUniqueViolation     = "23505"
+	pgForeignKeyViolation = "23503"
+)
 
 // isUniqueViolation распознаёт нарушение уникального индекса.
 //
@@ -16,4 +19,11 @@ const pgUniqueViolation = "23505"
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation
+}
+
+// isForeignKeyViolation распознаёт ссылку на несуществующую строку
+// (например, userId, которого нет в таблице users).
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == pgForeignKeyViolation
 }
