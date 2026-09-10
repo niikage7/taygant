@@ -19,6 +19,10 @@ if (!process.env.BACKEND_URL) {
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  // Для Docker: сборка кладёт в .next/standalone готовый server.js и только
+  // нужные ему зависимости — образ не тащит весь node_modules. На `pnpm dev`
+  // не влияет.
+  output: "standalone",
   rewrites: async () => {
     return [
       {
