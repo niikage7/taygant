@@ -5,8 +5,9 @@ package api
 import "github.com/gofiber/fiber/v2"
 
 // Register монтирует все маршруты API на базовый путь /api/v1.
-func Register(app *fiber.App) {
-	v1 := app.Group("/api/v1")
+// Переданные middleware применяются ко всей группе /api/v1, но не к health-check.
+func Register(app *fiber.App, middlewares ...fiber.Handler) {
+	v1 := app.Group("/api/v1", middlewares...)
 
 	registerAuthRoutes(v1)
 	registerUsersRoutes(v1)
