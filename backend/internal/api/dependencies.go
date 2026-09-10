@@ -63,7 +63,7 @@ func (a *API) dependenciesCreate(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	projectID, err := a.requireEditByTask(c, taskID)
+	projectID, err := a.requireManageByTask(c, taskID)
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (a *API) dependenciesDelete(c *fiber.Ctx) error {
 	if err != nil {
 		return fail(err)
 	}
-	if err := a.requireEdit(c, projectID); err != nil {
+	if _, err := a.requireManage(c, projectID); err != nil {
 		return err
 	}
 

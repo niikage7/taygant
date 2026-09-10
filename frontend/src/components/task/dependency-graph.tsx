@@ -26,6 +26,7 @@ export function DependencyGraph({
   predecessors,
   successors,
   projectTasks,
+  canManage,
 }: {
   taskId: string;
   taskNumber: string;
@@ -35,6 +36,8 @@ export function DependencyGraph({
   successors: TaskDependency[];
   /** Все задачи проекта — источник выбора для новой связи и подписей номеров. */
   projectTasks: Task[];
+  /** Создавать и рвать связи может только полный доступ. */
+  canManage: boolean;
 }) {
   const deleteDependency = useDeleteDependency(taskId);
   const linkedTaskIds = [
@@ -51,11 +54,13 @@ export function DependencyGraph({
             Определяет динамический расчёт сроков по алгоритму Critical Path Method (CPM)
           </p>
         </div>
-        <AddDependencyDialog
-          taskId={taskId}
-          candidates={projectTasks}
-          linkedTaskIds={linkedTaskIds}
-        />
+        {canManage ? (
+          <AddDependencyDialog
+            taskId={taskId}
+            candidates={projectTasks}
+            linkedTaskIds={linkedTaskIds}
+          />
+        ) : null}
       </CardHeader>
 
       <CardBody>
@@ -69,6 +74,7 @@ export function DependencyGraph({
             projectTasks={projectTasks}
             onDelete={(id) => deleteDependency.mutate(id)}
             deletingId={deleteDependency.isPending ? deleteDependency.variables : null}
+            canManage={canManage}
             emptyText="Предшественников нет — задача может начаться сразу."
           />
           <DependencyColumn
@@ -80,6 +86,7 @@ export function DependencyGraph({
             projectTasks={projectTasks}
             onDelete={(id) => deleteDependency.mutate(id)}
             deletingId={deleteDependency.isPending ? deleteDependency.variables : null}
+            canManage={canManage}
             emptyText="От этой задачи ничего не зависит."
           />
         </div>
@@ -97,6 +104,7 @@ function DependencyColumn({
   projectTasks,
   onDelete,
   deletingId,
+  canManage,
   emptyText,
 }: {
   icon: React.ReactNode;
@@ -107,6 +115,7 @@ function DependencyColumn({
   projectTasks: Task[];
   onDelete: (dependencyId: string) => void;
   deletingId: string | null | undefined;
+  canManage: boolean;
   emptyText: string;
 }) {
   const criticalCount = items.filter((item) => item.isCritical).length;
@@ -161,15 +170,17 @@ function DependencyColumn({
                         Критичная
                       </Badge>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => onDelete(item.id)}
-                      disabled={deletingId === item.id}
-                      aria-label={`Удалить связь с задачей «${title}»`}
-                      className="rounded-control p-1 text-ink-faint transition-colors hover:text-danger focus-visible:focus-ring disabled:opacity-50"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
+                    {canManage ? (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(item.id)}
+                        disabled={deletingId === item.id}
+                        aria-label={`Удалить связь с задачей «${title}»`}
+                        className="rounded-control p-1 text-ink-faint transition-colors hover:text-danger focus-visible:focus-ring disabled:opacity-50"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    ) : null}
                   </span>
                 </div>
 

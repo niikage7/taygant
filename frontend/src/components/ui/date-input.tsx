@@ -54,6 +54,7 @@ export function DateInput({
   invalid,
   /** Ограничение снизу: например, дедлайн не раньше даты старта. */
   minDate,
+  disabled,
 }: {
   id: string;
   /** Значение в ISO — наружу компонент всегда отдаёт этот формат. */
@@ -64,6 +65,8 @@ export function DateInput({
   weekdayHint?: string;
   invalid?: boolean;
   minDate?: string;
+  /** Только для чтения: поле и календарь недоступны. */
+  disabled?: boolean;
 }) {
   const [text, setText] = useState(() => toDisplay(value));
   const [open, setOpen] = useState(false);
@@ -88,13 +91,15 @@ export function DateInput({
         autoComplete="off"
         placeholder={MASK}
         value={text}
+        disabled={disabled}
         invalid={invalid || incomplete}
         className={className}
         icon={
           <Popover.Trigger
             type="button"
+            disabled={disabled}
             aria-label="Выбрать дату в календаре"
-            className="flex items-center rounded-control text-ink-faint transition-colors hover:text-brand focus-visible:focus-ring data-[state=open]:text-brand"
+            className="flex items-center rounded-control text-ink-faint transition-colors hover:text-brand focus-visible:focus-ring data-[state=open]:text-brand disabled:pointer-events-none disabled:opacity-50"
           >
             <CalendarDays className="size-4" />
           </Popover.Trigger>

@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { useCurrentProject } from "@/data/current-project";
+import { useProjectAccess } from "@/data/project-access";
 import { Alert } from "@/components/ui/alert";
 import { useProject, useTaskDetail, useTasks, useUpdateTask } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
@@ -31,6 +32,7 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
   const task = useTaskDetail(taskId);
   const projectTasks = useTasks(projectId);
   const updateTask = useUpdateTask(taskId);
+  const access = useProjectAccess();
 
   const [tab, setTab] = useState<"links" | "history" | "comments">("links");
   const [draft, setDraft] = useState<TaskUpdateRequest | null>(null);
@@ -44,6 +46,7 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
 
   const detail = task.data;
   const status = TASK_STATUS_META[detail.status];
+  const canEdit = access.canEditTask(detail);
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-4">
@@ -110,17 +113,19 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
 
             <div className="flex items-center gap-2">
               <ShareTaskButton />
-              <Button
-                onClick={() => draft && updateTask.mutate(draft)}
-                disabled={!draft || updateTask.isPending}
-              >
-                <Check />
-                {updateTask.isPending
-                  ? "Сохраняем…"
-                  : draft
-                    ? "Сохранить изменения"
-                    : "Изменений нет"}
-              </Button>
+              {canEdit ? (
+                <Button
+                  onClick={() => draft && updateTask.mutate(draft)}
+                  disabled={!draft || updateTask.isPending}
+                >
+                  <Check />
+                  {updateTask.isPending
+                    ? "Сохраняем…"
+                    : draft
+                      ? "Сохранить изменения"
+                      : "Изменений нет"}
+                </Button>
+              ) : null}
             </div>
           </div>
 
@@ -193,9 +198,14 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
                 predecessors={detail.predecessors}
                 successors={detail.successors}
                 projectTasks={projectTasks.data ?? []}
+                canManage={access.isFull}
               />
 
-              <ShiftSimulator taskId={taskId} projectTasks={projectTasks.data ?? []} />
+              <ShiftSimulator
+                taskId={taskId}
+                projectTasks={projectTasks.data ?? []}
+                canApply={access.isFull}
+              />
             </>
           ) : null}
         </div>

@@ -59,14 +59,14 @@ type applyShiftRequest struct {
 
 // POST /tasks/{taskId}/apply-shift — применить сдвиг цепочки зависимых задач.
 // Фактически переносит сроки задачи и каскадно связанных с ней задач по алгоритму CPM
-// (applied = true). Требует права редактировать план проекта.
+// (applied = true). Требует полного доступа: переносится не одна задача, а цепочка.
 // Body: { shiftDays, compensateFromBuffer, notifyAssignees }. 200 -> ShiftSimulation.
 func (a *API) simulationApplyShift(c *fiber.Ctx) error {
 	taskID, err := pathUUID(c, "taskId")
 	if err != nil {
 		return err
 	}
-	if _, err := a.requireEditByTask(c, taskID); err != nil {
+	if _, err := a.requireManageByTask(c, taskID); err != nil {
 		return err
 	}
 

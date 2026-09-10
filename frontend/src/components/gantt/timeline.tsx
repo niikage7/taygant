@@ -1,7 +1,7 @@
 "use client";
 
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   buildRange,
@@ -41,6 +41,8 @@ export function Timeline({
   endDate,
   today,
   highlightCriticalPath,
+  canMoveTask,
+  onTaskMove,
 }: {
   tasks: Task[];
   dependencies: TaskDependency[];
@@ -52,6 +54,10 @@ export function Timeline({
   /** «Сегодня» приходит снаружи, чтобы сервер и клиент отрисовали одну дату. */
   today: string;
   highlightCriticalPath: boolean;
+  /** Какие задачи участник вправе перетаскивать по таймлайну. */
+  canMoveTask: (task: Task) => boolean;
+  /** Перенос задачи на delta календарных дней (сохранением длительности). */
+  onTaskMove: (task: Task, deltaDays: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const range = buildRange(startDate, endDate, scale);
@@ -149,6 +155,8 @@ export function Timeline({
               pxPerDay={range.pxPerDay}
               today={today}
               highlightCriticalPath={highlightCriticalPath}
+              movable={canMoveTask(task)}
+              onMove={(deltaDays) => onTaskMove(task, deltaDays)}
             />
           ))}
 
@@ -200,6 +208,8 @@ function TaskBar({
   pxPerDay,
   today,
   highlightCriticalPath,
+  movable,
+  onMove,
 }: {
   task: Task;
   top: number;
@@ -208,7 +218,43 @@ function TaskBar({
   pxPerDay: number;
   today: string;
   highlightCriticalPath: boolean;
+  movable: boolean;
+  onMove: (deltaDays: number) => void;
 }) {
+  const [dragDelta, setDragDelta] = useState<number | null>(null);
+  const startXRef = useRef(0);
+
+  // Перетаскивание сдвигает весь отрезок на целое число дней. Превью
+  // (dragDelta) живёт до pointerup, а запрос уходит один раз — иначе PATCH
+  // отправлялся бы на каждое движение мыши.
+  const onPointerDown = (event: React.PointerEvent<HTMLSpanElement>) => {
+    if (!movable) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    startXRef.current = event.clientX;
+    setDragDelta(0);
+  };
+  const onPointerMove = (event: React.PointerEvent<HTMLSpanElement>) => {
+    if (dragDelta === null) return;
+    setDragDelta(Math.round((event.clientX - startXRef.current) / pxPerDay));
+  };
+  const onPointerUp = () => {
+    if (dragDelta === null) return;
+    const delta = dragDelta;
+    setDragDelta(null);
+    if (delta !== 0) onMove(delta);
+  };
+
+  const offset = (dragDelta ?? 0) * pxPerDay;
+  const dragHandlers = movable
+    ? {
+        onPointerDown,
+        onPointerMove,
+        onPointerUp,
+        onPointerCancel: onPointerUp,
+      }
+    : {};
+  const dragClass = movable ? "cursor-grab touch-none select-none active:cursor-grabbing" : "";
+
   const critical = highlightCriticalPath && task.isCriticalPath;
   // Мало времени до дедлайна (или уже просрочена) и задача не закрыта — тоже риск.
   const daysLeft = differenceInCalendarDays(parseISO(task.endDate), parseISO(today));
@@ -217,8 +263,9 @@ function TaskBar({
   if (task.isMilestone) {
     return (
       <span
-        className="absolute flex items-center gap-2"
-        style={{ top, left, height: BAR_HEIGHT }}
+        {...dragHandlers}
+        className={`absolute flex items-center gap-2 ${dragClass}`}
+        style={{ top, left: left + offset, height: BAR_HEIGHT }}
         title={`${task.title} · ${format(parseISO(task.startDate), "dd.MM.yyyy")}`}
       >
         <span className="size-3.5 rotate-45 rounded-[2px] bg-brand" />
@@ -231,6 +278,7 @@ function TaskBar({
 
   return (
     <span
+      {...dragHandlers}
       className={cn(
         "absolute flex items-center overflow-hidden rounded-control",
         critical || nearDeadline
@@ -238,8 +286,9 @@ function TaskBar({
           : task.status === "done"
             ? "bg-success"
             : "bg-warning",
+        dragClass,
       )}
-      style={{ top, left, width, height: BAR_HEIGHT }}
+      style={{ top, left: left + offset, width, height: BAR_HEIGHT }}
       title={`${task.title} · ${task.progressPercent}%`}
     >
       <span

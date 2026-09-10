@@ -51,7 +51,7 @@ func (a *API) checklistCreate(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if _, err := a.requireEditByTask(c, taskID); err != nil {
+	if _, err := a.requireManageByTask(c, taskID); err != nil {
 		return err
 	}
 
@@ -83,7 +83,7 @@ func (a *API) checklistUpdate(c *fiber.Ctx) error {
 	if err != nil {
 		return fail(err)
 	}
-	if err := a.requireEdit(c, projectID); err != nil {
+	if _, err := a.requireManage(c, projectID); err != nil {
 		return err
 	}
 
@@ -111,7 +111,7 @@ func (a *API) checklistDelete(c *fiber.Ctx) error {
 	if err != nil {
 		return fail(err)
 	}
-	if err := a.requireEdit(c, projectID); err != nil {
+	if _, err := a.requireManage(c, projectID); err != nil {
 		return err
 	}
 

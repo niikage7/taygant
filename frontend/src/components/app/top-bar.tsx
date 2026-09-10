@@ -5,11 +5,13 @@ import { Plus, Search } from "lucide-react";
 import { CreateTaskDialog } from "@/components/gantt/create-task-dialog";
 import { Button } from "@/components/ui/button";
 import { useCurrentProject } from "@/data/current-project";
+import { useProjectAccess } from "@/data/project-access";
 import { useTasks } from "@/data/queries";
 
 /** Верхняя панель: глобальный поиск и быстрое создание задачи. */
 export function TopBar() {
   const { projectId } = useCurrentProject();
+  const access = useProjectAccess();
   // Тот же ключ, что и на экране Ганта, — React Query переиспользует ответ.
   const tasks = useTasks(projectId);
 
@@ -27,7 +29,7 @@ export function TopBar() {
         </kbd>
       </label>
 
-      {projectId ? (
+      {projectId && access.isFull ? (
         <CreateTaskDialog
           projectId={projectId}
           projectTasks={tasks.data ?? []}

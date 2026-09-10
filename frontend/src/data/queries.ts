@@ -13,6 +13,7 @@ import {
   milestonesService,
   projectsService,
   tasksService,
+  usersService,
 } from "@/services";
 import type {
   Comment,
@@ -24,6 +25,8 @@ import type {
   Project,
   ProjectDashboard,
   ProjectMember,
+  ProjectMemberCreateRequest,
+  ProjectMemberUpdateRequest,
   ProjectSummary,
   ShiftSimulation,
   SimulateShiftRequest,
@@ -32,6 +35,7 @@ import type {
   TaskDependencyCreateRequest,
   TaskDetail,
   TaskUpdateRequest,
+  User,
 } from "@/types";
 
 /**
@@ -54,6 +58,7 @@ export const queryKeys = {
   taskComments: (taskId: string) => ["tasks", taskId, "comments"] as const,
   dashboard: (projectId: string) => ["projects", projectId, "dashboard"] as const,
   members: (projectId: string) => ["projects", projectId, "members"] as const,
+  users: (search: string) => ["users", search] as const,
   task: (taskId: string) => ["tasks", taskId] as const,
 };
 
@@ -176,6 +181,26 @@ export function useAssignTasksToMilestone() {
           : [],
       );
     },
+  }); // <-- Добавьте эту строку (закрывает useMutation)
+}
+/**
+ * Перенос задачи на диаграмме Ганта: меняются только сроки.
+ *
+ * Отдельный хук, а не useUpdateTask: перетаскивание идёт под курсором и должно
+ * одним invalidate обновить весь экран Ганта, а не только карточку задачи.
+ */
+export function useMoveTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      taskId,
+      startDate,
+      endDate,
+    }: {
+      taskId: string;
+      startDate: string;
+      endDate: string;
+    }) => tasksService.update(taskId, { startDate, endDate }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });
 }
@@ -248,6 +273,52 @@ export function useProjectMembers(projectId: string | undefined): UseQueryResult
     queryKey: queryKeys.members(projectId ?? ""),
     queryFn: () => membersService.list(projectId as string),
     enabled: Boolean(projectId),
+  });
+}
+
+/** Пользователи платформы — источник выбора при добавлении в команду проекта. */
+export function useUsers(search?: string): UseQueryResult<User[]> {
+  return useQuery({
+    queryKey: queryKeys.users(search ?? ""),
+    queryFn: () => usersService.list(search),
+  });
+}
+
+/** Инвалидируем список команды: от него зависит уровень доступа на всех экранах. */
+function useMemberInvalidation(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  return () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId ?? "") });
+}
+
+export function useAddMember(projectId: string | undefined) {
+  const invalidate = useMemberInvalidation(projectId);
+  return useMutation({
+    mutationFn: (payload: ProjectMemberCreateRequest) =>
+      membersService.add(projectId as string, payload),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateMember(projectId: string | undefined) {
+  const invalidate = useMemberInvalidation(projectId);
+  return useMutation({
+    mutationFn: ({
+      memberId,
+      payload,
+    }: {
+      memberId: string;
+      payload: ProjectMemberUpdateRequest;
+    }) => membersService.update(projectId as string, memberId, payload),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRemoveMember(projectId: string | undefined) {
+  const invalidate = useMemberInvalidation(projectId);
+  return useMutation({
+    mutationFn: (memberId: string) => membersService.remove(projectId as string, memberId),
+    onSuccess: invalidate,
   });
 }
 

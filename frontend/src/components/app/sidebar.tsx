@@ -5,6 +5,7 @@ import {
   CirclePlus,
   GitBranch,
   LineChart,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -36,6 +37,7 @@ function navItems(detailsHref: string | null): (NavItem & { disabled?: boolean }
       icon: GitBranch,
       disabled: !detailsHref,
     },
+    { href: "/team", label: "Команда проекта", icon: Users },
     { href: "/projects/new", label: "Новый проект", icon: CirclePlus },
   ];
 }

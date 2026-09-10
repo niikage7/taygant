@@ -148,13 +148,14 @@ type taskCreateRequest struct {
 }
 
 // POST /projects/{projectId}/tasks — добавить задачу, опционально сразу со связями-предшественниками.
+// Только полный доступ: создание задач — часть управления планом проекта.
 // Body: TaskCreateRequest. 201 -> Task.
 func (a *API) tasksCreate(c *fiber.Ctx) error {
 	projectID, err := pathUUID(c, "projectId")
 	if err != nil {
 		return err
 	}
-	if err := a.requireEdit(c, projectID); err != nil {
+	if _, err := a.requireManage(c, projectID); err != nil {
 		return err
 	}
 
@@ -242,13 +243,18 @@ type taskUpdateRequest struct {
 }
 
 // PATCH /tasks/{taskId} — редактировать задачу (сроки, статус, ответственный, прогресс и т.д.).
+//
+// Полный доступ правит любые поля. Уровень edit может менять только статус и
+// сроки своих задач: о любом другом поле в теле запроса отвечаем 403, а не
+// молча игнорируем его — иначе клиент считал бы правку применённой.
 // Body: TaskUpdateRequest. 200 -> Task.
 func (a *API) tasksUpdate(c *fiber.Ctx) error {
 	taskID, err := pathUUID(c, "taskId")
 	if err != nil {
 		return err
 	}
-	if _, err := a.requireEditByTask(c, taskID); err != nil {
+	m, task, err := a.requireTaskWrite(c, taskID)
+	if err != nil {
 		return err
 	}
 
@@ -257,7 +263,17 @@ func (a *API) tasksUpdate(c *fiber.Ctx) error {
 		return err
 	}
 
-	task, err := a.tasks.Update(c.Context(), taskID, currentUserID(c), service.TaskInput{
+	if m.IsTaskRestricted(task) {
+		if body.SprintID != nil || body.Title != nil || body.Description != nil ||
+			body.AssigneeID != nil || body.ProgressPercent != nil || body.WeightPercent != nil {
+			return fiber.NewError(fiber.StatusForbidden, "уровень edit позволяет менять только статус и сроки своей задачи")
+		}
+		if body.Status == nil && body.StartDate == nil && body.EndDate == nil {
+			return fiber.NewError(fiber.StatusBadRequest, "укажите статус или сроки задачи")
+		}
+	}
+
+	task, err = a.tasks.Update(c.Context(), taskID, currentUserID(c), service.TaskInput{
 		SprintID:        body.SprintID,
 		Title:           body.Title,
 		Description:     body.Description,
@@ -276,13 +292,14 @@ func (a *API) tasksUpdate(c *fiber.Ctx) error {
 	return c.JSON(newTaskDTO(task))
 }
 
-// DELETE /tasks/{taskId} — удалить задачу вместе со связями, чек-листом и комментариями. 204.
+// DELETE /tasks/{taskId} — удалить задачу вместе со связями, чек-листом и комментариями.
+// Только полный доступ. 204.
 func (a *API) tasksDelete(c *fiber.Ctx) error {
 	taskID, err := pathUUID(c, "taskId")
 	if err != nil {
 		return err
 	}
-	if _, err := a.requireEditByTask(c, taskID); err != nil {
+	if _, err := a.requireManageByTask(c, taskID); err != nil {
 		return err
 	}
 

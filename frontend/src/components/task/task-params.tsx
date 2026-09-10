@@ -17,6 +17,7 @@ import {
   useProjectMembers,
   useToggleChecklistItem,
 } from "@/data/queries";
+import { useProjectAccess } from "@/data/project-access";
 import { formatSigned } from "@/lib/format";
 import { TASK_STATUS_META } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
@@ -48,9 +49,15 @@ export function TaskParams({
   const [newCriterion, setNewCriterion] = useState("");
 
   const members = useProjectMembers(project.id);
+  const access = useProjectAccess();
   const toggleChecklistItem = useToggleChecklistItem(task.id);
   const addChecklistItem = useAddChecklistItem(task.id);
   const deleteChecklistItem = useDeleteChecklistItem(task.id);
+
+  // Уровень edit правит только статус и сроки своих задач; полный доступ — всё.
+  const canEdit = access.canEditTask(task);
+  const restricted = access.isRestrictedTask(task);
+  const canManageChecklist = access.isFull;
 
   // Сервер — источник истины: после сохранения приходит обновлённая задача,
   // и локальные поля надо подтянуть, иначе они «залипнут» на старых значениях.
@@ -65,16 +72,36 @@ export function TaskParams({
   }, [task]);
 
   useEffect(() => {
+    if (!canEdit) {
+      onDraftChange(null);
+      return;
+    }
     const draft: TaskUpdateRequest = {};
-    if (progress !== task.progressPercent) draft.progressPercent = progress;
     if (status !== task.status) draft.status = status;
     if (startDate !== task.startDate) draft.startDate = startDate;
     if (endDate !== task.endDate) draft.endDate = endDate;
-    if (description !== (task.description ?? "")) draft.description = description;
-    if (title.trim() && title !== task.title) draft.title = title.trim();
-    if (assigneeId !== (task.assignee?.id ?? "")) draft.assigneeId = assigneeId || null;
+    // Остальные поля доступны только полному доступу: у уровня edit их правка
+    // отклоняется бэкендом, и черновик не должен их содержать.
+    if (!restricted) {
+      if (progress !== task.progressPercent) draft.progressPercent = progress;
+      if (description !== (task.description ?? "")) draft.description = description;
+      if (title.trim() && title !== task.title) draft.title = title.trim();
+      if (assigneeId !== (task.assignee?.id ?? "")) draft.assigneeId = assigneeId || null;
+    }
     onDraftChange(Object.keys(draft).length > 0 ? draft : null);
-  }, [progress, status, startDate, endDate, description, title, assigneeId, task, onDraftChange]);
+  }, [
+    progress,
+    status,
+    startDate,
+    endDate,
+    description,
+    title,
+    assigneeId,
+    task,
+    canEdit,
+    restricted,
+    onDraftChange,
+  ]);
 
   const deviation = progress - plannedProgressPercent;
   const doneCount = task.checklist.filter((item) => item.isDone).length;
@@ -95,6 +122,7 @@ export function TaskParams({
             id="task-title"
             rows={2}
             value={title}
+            disabled={!canEdit || restricted}
             onChange={(event) => setTitle(event.target.value)}
             className="mt-2 font-semibold"
             invalid={title.trim().length === 0}
@@ -126,6 +154,7 @@ export function TaskParams({
             <Select
               id="task-assignee"
               value={assigneeId}
+              disabled={!canEdit || restricted}
               onChange={(event) => setAssigneeId(event.target.value)}
             >
               <option value="">Не назначен</option>
@@ -149,6 +178,7 @@ export function TaskParams({
               <DateInput
                 id="task-start"
                 value={startDate}
+                disabled={!canEdit}
                 onChange={setStartDate}
                 className="mt-1"
               />
@@ -160,6 +190,7 @@ export function TaskParams({
               <DateInput
                 id="task-end"
                 value={endDate}
+                disabled={!canEdit}
                 onChange={setEndDate}
                 className="mt-1"
                 minDate={startDate}
@@ -182,16 +213,18 @@ export function TaskParams({
           <Select
             id="task-status"
             value={status}
+            disabled={!canEdit}
             onChange={(event) => setStatus(event.target.value as TaskStatus)}
             className="mt-2"
           >
-            {(["planned", "in_progress", "done", "overdue", "blocked"] as TaskStatus[]).map(
-              (value) => (
-                <option key={value} value={value}>
-                  {TASK_STATUS_META[value].label}
-                </option>
-              ),
-            )}
+            {(restricted
+              ? (["planned", "in_progress", "done"] as TaskStatus[])
+              : (["planned", "in_progress", "done", "overdue", "blocked"] as TaskStatus[])
+            ).map((value) => (
+              <option key={value} value={value}>
+                {TASK_STATUS_META[value].label}
+              </option>
+            ))}
           </Select>
         </div>
 
@@ -207,6 +240,7 @@ export function TaskParams({
                 min={0}
                 max={100}
                 value={progress}
+                disabled={!canEdit || restricted}
                 onChange={(event) => setProgress(Number(event.target.value))}
                 className="h-8 w-20"
               />
@@ -237,6 +271,7 @@ export function TaskParams({
             id="task-description"
             rows={7}
             value={description}
+            disabled={!canEdit || restricted}
             onChange={(event) => setDescription(event.target.value)}
             className="mt-2"
           />
@@ -254,13 +289,14 @@ export function TaskParams({
               <li key={item.id}>
                 <label
                   className={cn(
-                    "flex cursor-pointer items-start gap-2.5 rounded-control px-3 py-2.5 transition-colors",
+                    "flex items-start gap-2.5 rounded-control px-3 py-2.5 transition-colors",
+                    canManageChecklist && "cursor-pointer",
                     item.isDone ? "bg-surface-muted" : "bg-surface-subtle hover:bg-surface-muted",
                   )}
                 >
                   <Checkbox
                     checked={item.isDone}
-                    disabled={toggleChecklistItem.isPending}
+                    disabled={!canManageChecklist || toggleChecklistItem.isPending}
                     onCheckedChange={(checked) =>
                       toggleChecklistItem.mutate({
                         itemId: item.id,
@@ -277,50 +313,54 @@ export function TaskParams({
                   >
                     {item.text}
                   </span>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      // Кнопка лежит внутри <label>, иначе клик переключил бы галочку.
-                      event.preventDefault();
-                      deleteChecklistItem.mutate(item.id);
-                    }}
-                    disabled={deleteChecklistItem.isPending}
-                    aria-label={`Удалить критерий «${item.text}»`}
-                    className="shrink-0 rounded-control p-0.5 text-ink-faint transition-colors hover:text-danger focus-visible:focus-ring disabled:opacity-50"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
+                  {canManageChecklist ? (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        // Кнопка лежит внутри <label>, иначе клик переключил бы галочку.
+                        event.preventDefault();
+                        deleteChecklistItem.mutate(item.id);
+                      }}
+                      disabled={deleteChecklistItem.isPending}
+                      aria-label={`Удалить критерий «${item.text}»`}
+                      className="shrink-0 rounded-control p-0.5 text-ink-faint transition-colors hover:text-danger focus-visible:focus-ring disabled:opacity-50"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  ) : null}
                 </label>
               </li>
             ))}
           </ul>
 
-          <form
-            className="mt-2 flex items-center gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const text = newCriterion.trim();
-              if (!text) return;
-              addChecklistItem.mutate(text, { onSuccess: () => setNewCriterion("") });
-            }}
-          >
-            <Input
-              value={newCriterion}
-              onChange={(event) => setNewCriterion(event.target.value)}
-              placeholder="Новый критерий приёмки"
-              aria-label="Новый критерий приёмки"
-              className="h-8"
-            />
-            <Button
-              type="submit"
-              variant="secondary"
-              size="sm"
-              disabled={!newCriterion.trim() || addChecklistItem.isPending}
+          {canManageChecklist ? (
+            <form
+              className="mt-2 flex items-center gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const text = newCriterion.trim();
+                if (!text) return;
+                addChecklistItem.mutate(text, { onSuccess: () => setNewCriterion("") });
+              }}
             >
-              <Plus />
-              Добавить
-            </Button>
-          </form>
+              <Input
+                value={newCriterion}
+                onChange={(event) => setNewCriterion(event.target.value)}
+                placeholder="Новый критерий приёмки"
+                aria-label="Новый критерий приёмки"
+                className="h-8"
+              />
+              <Button
+                type="submit"
+                variant="secondary"
+                size="sm"
+                disabled={!newCriterion.trim() || addChecklistItem.isPending}
+              >
+                <Plus />
+                Добавить
+              </Button>
+            </form>
+          ) : null}
         </div>
       </CardBody>
     </Card>

@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { useCurrentProject } from "@/data/current-project";
+import { useProjectAccess } from "@/data/project-access";
 import { useDashboard, useProject } from "@/data/queries";
 
 /**
@@ -28,6 +29,7 @@ export default function OverviewPage() {
   const { projectId, isEmpty, error } = useCurrentProject();
   const project = useProject(projectId);
   const dashboard = useDashboard(projectId);
+  const access = useProjectAccess();
 
   if (error) return <PageError error={error} />;
   if (isEmpty) return <EmptyProjects />;
@@ -61,7 +63,7 @@ export default function OverviewPage() {
       <MilestonesStrip
         milestones={data.nearestMilestones}
         action={
-          projectId ? (
+          projectId && access.isFull ? (
             <MilestonesDialog
               projectId={projectId}
               trigger={

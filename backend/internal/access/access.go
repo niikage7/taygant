@@ -1,6 +1,9 @@
 // Package access определяет права участника на действия внутри проекта.
-// Правило одно и то же для всех сущностей проекта (задач, спринтов, вех и т.д.),
-// поэтому оно вынесено сюда, а не продублировано в каждом сервисе.
+//
+// Модель прав: view — только чтение; edit — изменение статуса и сроков своих
+// (где участник исполнитель) задач; full — полное управление планом проекта,
+// его параметрами и составом команды. Общее правило вынесено сюда, чтобы не
+// дублировать его в каждом сервисе.
 package access
 
 import (
@@ -49,24 +52,30 @@ func Load(ctx context.Context, db *gorm.DB, projectID, userID uuid.UUID) (Member
 	return Membership{Project: project, Member: member}, nil
 }
 
-// CanEdit сообщает, что участник может создавать и редактировать задачи, спринты,
-// вехи, чек-лист и связи — всё, что описывает план проекта.
-func (m Membership) CanEdit() bool {
-	return m.Member.AccessLevel == models.AccessLevelFull || m.Member.AccessLevel == models.AccessLevelEdit
-}
-
-// CanManage сообщает, что участник может менять параметры проекта и состав команды.
-// Именно это спецификация называет уровнем full: "управление проектом и командой".
+// CanManage сообщает, что участник может создавать и редактировать план проекта
+// (задачи, спринты, вехи, чек-лист, связи), менять параметры проекта и состав
+// команды. Это уровень доступа full.
 func (m Membership) CanManage() bool {
 	return m.Member.AccessLevel == models.AccessLevelFull
 }
 
-// RequireEdit возвращает ErrForbidden, если у участника только просмотр.
-func (m Membership) RequireEdit() error {
-	if !m.CanEdit() {
-		return service.ErrForbidden
+// CanEditTask сообщает, что участник может изменить задачу: либо у него полный
+// доступ, либо он исполнитель задачи с уровнем edit.
+func (m Membership) CanEditTask(task models.Task) bool {
+	if m.CanManage() {
+		return true
 	}
-	return nil
+	if m.Member.AccessLevel != models.AccessLevelEdit {
+		return false
+	}
+	return task.AssigneeID != nil && *task.AssigneeID == m.Member.UserID
+}
+
+// IsTaskRestricted сообщает, что участник редактирует задачу как исполнитель с
+// уровнем edit, а не как full. Такому участнику разрешены только статус и сроки
+// своей задачи; набор полей проверяет HTTP-слой, который видит тело запроса.
+func (m Membership) IsTaskRestricted(task models.Task) bool {
+	return !m.CanManage() && m.CanEditTask(task)
 }
 
 // RequireManage возвращает ErrForbidden, если участнику не выдан полный доступ.

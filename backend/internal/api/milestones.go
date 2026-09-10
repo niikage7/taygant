@@ -67,7 +67,7 @@ func (a *API) milestonesCreate(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if err := a.requireEdit(c, projectID); err != nil {
+	if _, err := a.requireManage(c, projectID); err != nil {
 		return err
 	}
 
@@ -94,7 +94,7 @@ func (a *API) milestonesUpdate(c *fiber.Ctx) error {
 	if err != nil {
 		return fail(err)
 	}
-	if err := a.requireEdit(c, projectID); err != nil {
+	if _, err := a.requireManage(c, projectID); err != nil {
 		return err
 	}
 
@@ -119,7 +119,7 @@ func (a *API) milestonesDelete(c *fiber.Ctx) error {
 	if err != nil {
 		return fail(err)
 	}
-	if err := a.requireEdit(c, projectID); err != nil {
+	if _, err := a.requireManage(c, projectID); err != nil {
 		return err
 	}
 

@@ -9,6 +9,7 @@ import (
 	"taygant_backend/internal/access"
 	"taygant_backend/internal/auth"
 	"taygant_backend/internal/models"
+	"taygant_backend/internal/service"
 )
 
 // Ключи, под которыми middleware кладёт данные запроса в контекст Fiber.
@@ -88,18 +89,9 @@ func (a *API) requireMember(c *fiber.Ctx, projectID uuid.UUID) (access.Membershi
 	return m, nil
 }
 
-// requireEdit — то же, что requireMember, но дополнительно проверяет право
-// редактировать план проекта (задачи, спринты, вехи, чек-лист, связи).
-func (a *API) requireEdit(c *fiber.Ctx, projectID uuid.UUID) error {
-	m, err := a.requireMember(c, projectID)
-	if err != nil {
-		return err
-	}
-	return fail(m.RequireEdit())
-}
-
 // requireManage — то же, что requireMember, но дополнительно проверяет право
-// управлять проектом и его командой (уровень доступа full).
+// управлять проектом: правку плана (задачи, спринты, вехи, чек-лист, связи),
+// параметры проекта и состав команды. Это уровень доступа full.
 func (a *API) requireManage(c *fiber.Ctx, projectID uuid.UUID) (access.Membership, error) {
 	m, err := a.requireMember(c, projectID)
 	if err != nil {
@@ -111,19 +103,43 @@ func (a *API) requireManage(c *fiber.Ctx, projectID uuid.UUID) (access.Membershi
 	return m, nil
 }
 
-// requireEditByTask резолвит projectId по задаче и проверяет право её редактировать.
-// Используется хендлерами вложенных ресурсов (dependencies, checklist, comments,
-// history), которые адресуются taskId без projectId в пути.
-func (a *API) requireEditByTask(c *fiber.Ctx, taskID uuid.UUID) (uuid.UUID, error) {
+// requireTaskWrite проверяет право изменить конкретную задачу и возвращает
+// загруженную задачу вместе с записью участника.
+//
+// Уровень edit разрешает правку только своих задач (где участник — исполнитель),
+// причём лишь статуса и сроков; какие поля пришли в запросе, знает хендлер,
+// поэтому полная проверка набора полей остаётся там.
+func (a *API) requireTaskWrite(c *fiber.Ctx, taskID uuid.UUID) (access.Membership, models.Task, error) {
+	task, err := a.tasks.GetBrief(c.Context(), taskID)
+	if err != nil {
+		return access.Membership{}, models.Task{}, fail(err)
+	}
+	m, err := a.requireMember(c, task.ProjectID)
+	if err != nil {
+		return access.Membership{}, models.Task{}, err
+	}
+	if !m.CanEditTask(task) {
+		return access.Membership{}, models.Task{}, fail(service.ErrForbidden)
+	}
+	return m, task, nil
+}
+
+// requireManageByTask резолвит projectId по задаче и проверяет право управлять
+// планом проекта. Используется хендлерами вложенных ресурсов (dependencies,
+// checklist, simulation), которые адресуются taskId без projectId в пути.
+func (a *API) requireManageByTask(c *fiber.Ctx, taskID uuid.UUID) (uuid.UUID, error) {
 	projectID, err := a.tasks.ProjectID(c.Context(), taskID)
 	if err != nil {
 		return uuid.Nil, fail(err)
 	}
-	return projectID, a.requireEdit(c, projectID)
+	if _, err := a.requireManage(c, projectID); err != nil {
+		return uuid.Nil, err
+	}
+	return projectID, nil
 }
 
-// requireMemberByTask — то же, что requireEditByTask, но только для чтения:
-// достаточно быть участником проекта, редактировать не обязательно.
+// requireMemberByTask — то же, что requireManageByTask, но только для чтения:
+// достаточно быть участником проекта, управлять не обязательно.
 func (a *API) requireMemberByTask(c *fiber.Ctx, taskID uuid.UUID) (uuid.UUID, error) {
 	projectID, err := a.tasks.ProjectID(c.Context(), taskID)
 	if err != nil {

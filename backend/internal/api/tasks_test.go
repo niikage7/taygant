@@ -351,6 +351,20 @@ func TestTaskPermissionsByAccessLevel(t *testing.T) {
 	post(t, viewer.Token, path+"/checklist", map[string]any{"text": "Пункт"}).want(t, http.StatusForbidden)
 	del(t, viewer.Token, path).want(t, http.StatusForbidden)
 
+	// Уровень edit: только статус и сроки своих задач (где он исполнитель).
+	editor := newUser(t, "Редактор")
+	addMember(t, owner, project.ID, editor, "edit")
+	own := newTask(t, owner.Token, project.ID, map[string]any{"assigneeId": editor.ID})
+	foreign := newTask(t, owner.Token, project.ID, nil)
+
+	patch(t, editor.Token, "/tasks/"+own.ID, map[string]any{"status": "in_progress"}).want(t, http.StatusOK)
+	patch(t, editor.Token, "/tasks/"+own.ID, map[string]any{"startDate": day(3), "endDate": day(5)}).want(t, http.StatusOK)
+	patch(t, editor.Token, "/tasks/"+own.ID, map[string]any{"title": "Правка"}).want(t, http.StatusForbidden)
+	patch(t, editor.Token, "/tasks/"+foreign.ID, map[string]any{"status": "in_progress"}).want(t, http.StatusForbidden)
+	post(t, editor.Token, "/projects/"+project.ID+"/tasks", map[string]any{"title": "Новая", "startDate": day(1), "endDate": day(2)}).want(t, http.StatusForbidden)
+	del(t, editor.Token, "/tasks/"+own.ID).want(t, http.StatusForbidden)
+	post(t, editor.Token, "/tasks/"+own.ID+"/checklist", map[string]any{"text": "Пункт"}).want(t, http.StatusForbidden)
+
 	// Постороннему не положено даже знать, что задача существует.
 	for _, tc := range []struct {
 		name string

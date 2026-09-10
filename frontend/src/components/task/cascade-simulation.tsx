@@ -23,6 +23,7 @@ export function CascadeSimulation({
   onCancel,
   onApply,
   isApplying,
+  canApply,
 }: {
   simulation: ShiftSimulation;
   /** Номера задач для текста уведомления — берутся из WBS, а не из id. */
@@ -32,6 +33,8 @@ export function CascadeSimulation({
   onCancel: () => void;
   onApply: (compensateFromBuffer: boolean) => void;
   isApplying: boolean;
+  /** Применение сдвига цепочки доступно только полному доступу. */
+  canApply: boolean;
 }) {
   const impact = simulation.projectDeadlineImpact;
   // Сдвиг задач не обязан двигать дедлайн: если у цепочки есть запас, проект
@@ -142,25 +145,29 @@ export function CascadeSimulation({
 
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="ghost" onClick={onCancel} disabled={isApplying}>
-            Отмена
+            {canApply ? "Отмена" : "Сбросить"}
           </Button>
-          <Button
-            variant="soft"
-            onClick={() => onApply(true)}
-            disabled={isApplying || simulation.bufferAvailableDays <= 0}
-            title={
-              simulation.bufferAvailableDays <= 0
-                ? "Резерва нет — компенсировать сдвиг нечем"
-                : undefined
-            }
-          >
-            <Shield />
-            Компенсировать из резерва
-          </Button>
-          <Button variant="danger" onClick={() => onApply(false)} disabled={isApplying}>
-            <Zap />
-            {isApplying ? "Применяем…" : `Применить сдвиг цепочки (+${simulation.shiftDays}д)`}
-          </Button>
+          {canApply ? (
+            <>
+              <Button
+                variant="soft"
+                onClick={() => onApply(true)}
+                disabled={isApplying || simulation.bufferAvailableDays <= 0}
+                title={
+                  simulation.bufferAvailableDays <= 0
+                    ? "Резерва нет — компенсировать сдвиг нечем"
+                    : undefined
+                }
+              >
+                <Shield />
+                Компенсировать из резерва
+              </Button>
+              <Button variant="danger" onClick={() => onApply(false)} disabled={isApplying}>
+                <Zap />
+                {isApplying ? "Применяем…" : `Применить сдвиг цепочки (+${simulation.shiftDays}д)`}
+              </Button>
+            </>
+          ) : null}
         </div>
       </CardBody>
     </Card>

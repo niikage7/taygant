@@ -23,10 +23,13 @@ import type { Task } from "@/types";
 export function ShiftSimulator({
   taskId,
   projectTasks,
+  canApply,
 }: {
   taskId: string;
   /** Нужны, чтобы подписать затронутые задачи их номерами WBS, а не id. */
   projectTasks: Task[];
+  /** Применение сдвига цепочки — только полный доступ. */
+  canApply: boolean;
 }) {
   const [shiftDays, setShiftDays] = useState(5);
   const simulate = useSimulateShift(taskId);
@@ -104,6 +107,7 @@ export function ShiftSimulator({
           affectedNumbers={affectedNumbers}
           numberOf={(id) => wbsOf.get(id)}
           isApplying={applyShift.isPending}
+          canApply={canApply}
           onCancel={() => {
             simulate.reset();
             applyShift.reset();

@@ -1,5 +1,6 @@
 "use client";
 
+import { addDays, format, parseISO } from "date-fns";
 import { CircleAlert, Plus, TriangleAlert, User, Waypoints, X } from "lucide-react";
 import { useState } from "react";
 
@@ -8,6 +9,8 @@ import { buildGanttRows } from "@/lib/gantt-rows";
 import { TaskTable } from "@/components/gantt/task-table";
 import { Timeline } from "@/components/gantt/timeline";
 import { Segmented } from "@/components/ui/segmented";
+import { useProjectAccess } from "@/data/project-access";
+import { useMoveTask } from "@/data/queries";
 import { cn } from "@/lib/utils";
 import type { TimeScale } from "@/lib/gantt";
 import type { Milestone, Project, Task, TaskDependency } from "@/types";
@@ -53,10 +56,24 @@ export function GanttBoard({
       return next;
     });
 
+  const access = useProjectAccess();
+  const moveTask = useMoveTask();
+
   const toggleFilter = (filter: Filter) =>
     setFilters((current) =>
       current.includes(filter) ? current.filter((item) => item !== filter) : [...current, filter],
     );
+
+  // Перенос задачи целиком сдвигает сроки на delta дней, сохраняя длительность.
+  // Веха нулевой длительности — точка, поэтому её начало и конец совпадают.
+  const handleTaskMove = (task: Task, deltaDays: number) => {
+    if (deltaDays === 0) return;
+    const startDate = format(addDays(parseISO(task.startDate), deltaDays), "yyyy-MM-dd");
+    const endDate = task.isMilestone
+      ? startDate
+      : format(addDays(parseISO(task.endDate), deltaDays), "yyyy-MM-dd");
+    moveTask.mutate({ taskId: task.id, startDate, endDate });
+  };
 
   const visibleTasks = tasks.filter((task) => {
     if (filters.includes("mine") && task.assignee?.id !== currentUserId) return false;
@@ -152,22 +169,26 @@ export function GanttBoard({
             endDate={project.deadline}
             today={today}
             highlightCriticalPath={project.highlightCriticalPath}
+            canMoveTask={access.canEditTask}
+            onTaskMove={handleTaskMove}
           />
         </div>
 
-        <CreateTaskDialog
-          projectId={project.id}
-          projectTasks={tasks}
-          trigger={
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-[13px] text-ink-faint transition-colors hover:bg-surface-subtle hover:text-ink-muted focus-visible:focus-ring"
-            >
-              <Plus className="size-4" />
-              Добавить задачу или веху…
-            </button>
-          }
-        />
+        {access.isFull ? (
+          <CreateTaskDialog
+            projectId={project.id}
+            projectTasks={tasks}
+            trigger={
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-[13px] text-ink-faint transition-colors hover:bg-surface-subtle hover:text-ink-muted focus-visible:focus-ring"
+              >
+                <Plus className="size-4" />
+                Добавить задачу или веху…
+              </button>
+            }
+          />
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-ink-faint">

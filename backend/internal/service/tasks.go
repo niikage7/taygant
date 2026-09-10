@@ -531,6 +531,22 @@ func validateAssignee(tx *gorm.DB, projectID, userID uuid.UUID) error {
 	return nil
 }
 
+// GetBrief возвращает задачу как она хранится в БД, без вычисляемых полей
+// (эффективный статус, длительности, CPM). Нужен HTTP-слою, чтобы проверить
+// права на правку: полный Get прогонял бы весь пересчёт ради ответа на вопрос
+// «кто исполнитель задачи».
+func (s *Tasks) GetBrief(ctx context.Context, taskID uuid.UUID) (models.Task, error) {
+	var task models.Task
+	err := s.db.WithContext(ctx).First(&task, "id = ?", taskID).Error
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return models.Task{}, ErrNotFound
+	case err != nil:
+		return models.Task{}, fmt.Errorf("найти задачу: %w", err)
+	}
+	return task, nil
+}
+
 // Get возвращает задачу с вычисленными полями.
 //
 // Реализован через List(ctx, task.ProjectID, project, Filter{}) с последующим
@@ -738,18 +754,6 @@ func (s *Tasks) Delete(ctx context.Context, taskID uuid.UUID) error {
 		return ErrNotFound
 	}
 	return nil
-}
-
-func (s *Tasks) get(ctx context.Context, taskID uuid.UUID) (models.Task, error) {
-	var task models.Task
-	err := s.db.WithContext(ctx).Preload("Assignee").First(&task, "id = ?", taskID).Error
-	switch {
-	case errors.Is(err, gorm.ErrRecordNotFound):
-		return models.Task{}, ErrNotFound
-	case err != nil:
-		return models.Task{}, fmt.Errorf("найти задачу: %w", err)
-	}
-	return task, nil
 }
 
 func uuidPtrEqual(a, b *uuid.UUID) bool {
