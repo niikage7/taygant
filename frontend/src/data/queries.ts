@@ -183,7 +183,8 @@ export function useAssignTasksToMilestone() {
           : [],
       );
     },
-  }); // <-- Добавьте эту строку (закрывает useMutation)
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+  });
 }
 /**
  * Перенос задачи на диаграмме Ганта: меняются только сроки.
@@ -340,6 +341,26 @@ export function useRemoveMember(projectId: string | undefined) {
 function useMilestoneInvalidation() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: ["projects"] });
+}
+
+export function useDeleteTask(taskId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => tasksService.remove(taskId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
+/**
+ * Удаление проекта. На бэкенде это архивирование (`projects.Archive`), то есть
+ * логическое удаление — проект исчезает из списка, но данные остаются.
+ */
+export function useDeleteProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (projectId: string) => projectsService.remove(projectId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
+  });
 }
 
 export function useCreateMilestone(projectId: string | undefined) {

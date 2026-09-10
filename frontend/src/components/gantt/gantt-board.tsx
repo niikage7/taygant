@@ -84,8 +84,7 @@ export function GanttBoard({
 
   // Порядок строк считаем один раз: реестр и таймлайн обязаны совпадать
   // построчно, иначе отрезки уедут относительно названий.
-  const rows = buildGanttRows(visibleTasks, collapsed);
-  const visibleInOrder = rows.map((row) => row.task);
+  const rows = buildGanttRows(visibleTasks, milestones, collapsed);
 
   const criticalTask = tasks.find(
     (task) => task.isCriticalPath && task.planVsActualDeviationDays < 0,
@@ -161,7 +160,7 @@ export function GanttBoard({
             highlightCriticalPath={project.highlightCriticalPath}
           />
           <Timeline
-            tasks={visibleInOrder}
+            rows={rows}
             dependencies={dependencies}
             milestones={milestones}
             scale={scale}
@@ -177,7 +176,6 @@ export function GanttBoard({
         {access.isFull ? (
           <CreateTaskDialog
             projectId={project.id}
-            projectTasks={tasks}
             trigger={
               <button
                 type="button"
@@ -188,8 +186,7 @@ export function GanttBoard({
               </button>
             }
           />
-        ) : null}
-      </div>
+        ) : null}      </div>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-ink-faint">
         <span className="font-semibold tracking-wider uppercase">Легенда связей:</span>

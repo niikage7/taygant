@@ -20,12 +20,14 @@ import type { Task } from "@/types";
  * остаются: откатывать их хуже, чем сообщить о частичном результате.
  */
 export function LinkTasksDialog({
-  milestoneTaskId,
+  milestoneId,
+  milestoneName,
   candidates,
   trigger,
 }: {
-  /** Задача-веха, к которой привязываются работы. */
-  milestoneTaskId: string;
+  /** Контрольная точка проекта, к которой привязываются работы. */
+  milestoneId: string;
+  milestoneName: string;
   candidates: Task[];
   trigger: ReactNode;
 }) {
@@ -35,17 +37,16 @@ export function LinkTasksDialog({
 
   const assignTasks = useAssignTasksToMilestone();
   // Уже привязанные к этой вехе показываем отмеченными, чужие вехи не трогаем.
+  // Задачи, уже привязанные к другой вехе, не показываем: перетаскивание между
+  // вехами — отдельный сценарий, и молча переназначать чужую задачу неверно.
   const available = candidates.filter(
-    (task) =>
-      task.id !== milestoneTaskId &&
-      !task.isMilestone &&
-      (!task.milestoneId || task.milestoneId === milestoneTaskId),
+    (task) => !task.milestoneId || task.milestoneId === milestoneId,
   );
 
   function submit() {
     setFailed([]);
     assignTasks.mutate(
-      { taskIds: selected, milestoneId: milestoneTaskId },
+      { taskIds: selected, milestoneId },
       {
         onSuccess: (errors) => {
           if (errors.length > 0) {
@@ -86,7 +87,7 @@ export function LinkTasksDialog({
                 Привязать задачи к вехе
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-[13px] text-ink-muted">
-                Отметьте работы, которые ведут к этой вехе. Прогресс вехи
+                Отметьте работы, которые ведут к вехе «{milestoneName}». Прогресс
                 считается по ним.
               </Dialog.Description>
             </div>

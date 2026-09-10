@@ -1,9 +1,11 @@
 "use client";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, ChevronsUpDown, TriangleAlert } from "lucide-react";
+import { Check, ChevronsUpDown, Trash2, TriangleAlert } from "lucide-react";
 
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Progress } from "@/components/ui/progress";
+import { useDeleteProject } from "@/data/queries";
 import { cn } from "@/lib/utils";
 import type { ProjectSummary } from "@/types";
 
@@ -24,6 +26,7 @@ export function ProjectSwitcher({
   onSelect: (projectId: string) => void;
 }) {
   const current = projects.find((project) => project.id === currentProjectId);
+  const deleteProject = useDeleteProject();
   const progress = current?.progressPercent ?? 0;
   const health = current?.healthIndex ?? 0;
 
@@ -55,8 +58,42 @@ export function ProjectSwitcher({
     </>
   );
 
+  const deleteButton = current ? (
+      <ConfirmDialog
+        title="Удалить проект?"
+        description={
+          <>
+            Проект «{current.name}» будет архивирован: он пропадёт из списка
+            вместе с задачами и вехами. Данные при этом сохранятся на сервере.
+          </>
+        }
+        confirmLabel="Удалить проект"
+        pendingLabel="Удаляем…"
+        isPending={deleteProject.isPending}
+        error={deleteProject.error}
+        onConfirm={(close) =>
+          deleteProject.mutate(current.id, { onSuccess: close })
+        }
+        trigger={
+          <button
+            type="button"
+            className="mt-2 flex items-center gap-1.5 rounded-control text-xs text-ink-faint transition-colors hover:text-danger focus-visible:focus-ring"
+          >
+            <Trash2 className="size-3" />
+            Удалить проект
+          </button>
+        }
+      />
+  ) : null;
+
+
   if (projects.length < 2) {
-    return <div className="rounded-control border border-line p-3">{summary}</div>;
+    return (
+      <div className="rounded-control border border-line p-3">
+        {summary}
+        {deleteButton}
+      </div>
+    );
   }
 
   return (
@@ -111,6 +148,9 @@ export function ProjectSwitcher({
           })}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
+
+      {/* Вне триггера: вложенная кнопка внутри кнопки — невалидная разметка. */}
+      <div className="px-3">{deleteButton}</div>
     </DropdownMenu.Root>
   );
 }
