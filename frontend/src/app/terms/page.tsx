@@ -33,7 +33,7 @@ export default async function TermsPage() {
             className="flex items-center gap-2.5 rounded-control focus-visible:focus-ring"
           >
             <LogoMark className="size-8" />
-            <span className="text-sm font-bold text-ink">ПроектКонтроль</span>
+            <span className="text-sm font-bold text-ink">taygant</span>
           </Link>
           <Link
             href="/register"
@@ -51,7 +51,7 @@ export default async function TermsPage() {
       </main>
 
       <footer className="pb-10 text-center text-xs text-ink-faint">
-        © 2026 taygantt
+        © 2026 taygant
       </footer>
     </div>
   );

@@ -33,7 +33,7 @@ export default function ForgotPasswordPage() {
         </Alert>
 
         <a
-          href="mailto:niikage7@gmail.com?subject=Восстановление%20доступа%20к%20ПроектКонтроль"
+          href="mailto:niikage7@gmail.com?subject=Восстановление%20доступа%20к%20taygant"
           className="flex items-center gap-2.5 rounded-control bg-surface-muted px-3 py-2.5 text-[13px] text-ink transition-colors hover:bg-brand-tint hover:text-brand focus-visible:focus-ring"
         >
           <Mail className="size-4 shrink-0 text-ink-faint" />

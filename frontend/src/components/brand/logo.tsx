@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Знак «ПроектКонтроль»: связанные полосы Ганта со стрелкой зависимости.
+ * Знак «taygant»: связанные полосы Ганта со стрелкой зависимости.
  * Воспроизведён из макета в векторе, чтобы масштабироваться без потери качества.
  */
 export function LogoMark({ className, ...props }: React.ComponentProps<"svg">) {
@@ -9,7 +9,7 @@ export function LogoMark({ className, ...props }: React.ComponentProps<"svg">) {
     <svg
       viewBox="0 0 80 80"
       role="img"
-      aria-label="ПроектКонтроль"
+      aria-label="taygant"
       className={cn("size-10", className)}
       {...props}
     >

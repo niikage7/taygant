@@ -20,12 +20,13 @@ import { TaskParams } from "@/components/task/task-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
-import { useCurrentProjectId, useProject, useTaskDetail } from "@/data/queries";
+import { useCurrentProject } from "@/data/current-project";
+import { useProject, useTaskDetail } from "@/data/queries";
 import { TASK_STATUS_META } from "@/lib/task-status";
 
 export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">) {
   const { taskId } = use(params);
-  const { projectId } = useCurrentProjectId();
+  const { projectId } = useCurrentProject();
   const project = useProject(projectId);
   const task = useTaskDetail(taskId);
 

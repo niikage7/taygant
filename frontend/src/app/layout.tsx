@@ -4,8 +4,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "ПроектКонтроль",
-    template: "%s · ПроектКонтроль",
+    default: "taygant",
+    template: "%s · taygant",
   },
   description: "Управление проектами и диаграмма Ганта",
 };
