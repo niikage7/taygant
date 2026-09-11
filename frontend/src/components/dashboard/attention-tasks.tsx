@@ -33,7 +33,7 @@ export function AttentionTasks({ tasks }: { tasks: AttentionTask[] }) {
                 <th scope="col" className="pb-2 font-semibold">
                   WBS / Задача
                 </th>
-                <th scope="col" className="pb-2 font-semibold">
+                <th scope="col" className="hidden pb-2 font-semibold sm:table-cell">
                   Исполнитель
                 </th>
                 <th scope="col" className="pb-2 text-right font-semibold">
@@ -59,12 +59,20 @@ export function AttentionTasks({ tasks }: { tasks: AttentionTask[] }) {
                         >
                           #{task.wbsNumber}
                         </span>
-                        <span className="text-13 text-ink group-hover:text-brand">
-                          {task.title}
+                        <span className="min-w-0">
+                          <span className="text-13 text-ink group-hover:text-brand">
+                            {task.title}
+                          </span>
+                          {/* На телефоне колонки исполнителя нет — имя под названием. */}
+                          {task.assignee ? (
+                            <span className="mt-0.5 block text-xs text-ink-muted sm:hidden">
+                              {task.assignee.fullName}
+                            </span>
+                          ) : null}
                         </span>
                       </Link>
                     </td>
-                    <td className="py-3 pr-3">
+                    <td className="hidden py-3 pr-3 sm:table-cell">
                       {task.assignee ? (
                         <UserHoverCard user={task.assignee}>
                           <span className="flex items-center gap-1.5">

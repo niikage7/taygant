@@ -140,7 +140,7 @@ export function DependencyGraph({
       </CardHeader>
 
       <CardBody>
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <DependencyColumn
             icon={<ArrowLeftToLine className="size-3.5" />}
             title="Входящие связи (предшественники)"

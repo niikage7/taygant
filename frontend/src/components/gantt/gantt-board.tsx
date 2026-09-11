@@ -13,7 +13,8 @@ import { useProjectAccess } from "@/data/project-access";
 import { useMoveTask } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
 import { cn } from "@/lib/utils";
-import { TASK_TABLE_WIDTH, type TimeScale } from "@/lib/gantt";
+import { TASK_TABLE_COMPACT_WIDTH, TASK_TABLE_WIDTH, type TimeScale } from "@/lib/gantt";
+import { useMediaQuery } from "@/lib/use-media-query";
 import type { Milestone, Project, ShiftSimulation, Task, TaskDependency } from "@/types";
 
 const SCALES = [
@@ -65,6 +66,10 @@ export function GanttBoard({
   // Прокрутка — общая для реестра и таймлайна: это один контейнер, скроллящийся
   // в обе стороны. Ссылка нужна таймлайну, чтобы подкрутить график к сегодня.
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Уже md реестр сжимается до номера и названия — иначе на телефоне он
+  // закрывает таймлайн. Ширина нужна и таблице, и расчёту прокрутки, поэтому
+  // решается в JS, а не классами.
+  const compact = useMediaQuery("(max-width: 767px)");
 
   const toggleCollapse = (milestoneId: string) =>
     setCollapsed((current) => {
@@ -253,6 +258,7 @@ export function GanttBoard({
             collapsed={collapsed}
             onToggleCollapse={toggleCollapse}
             highlightCriticalPath={project.highlightCriticalPath}
+            compact={compact}
           />
           <Timeline
             rows={rows}
@@ -266,7 +272,7 @@ export function GanttBoard({
             canMoveTask={access.canEditTask}
             onTaskMove={handleTaskMove}
             scrollRef={scrollRef}
-            frozenWidth={TASK_TABLE_WIDTH}
+            frozenWidth={compact ? TASK_TABLE_COMPACT_WIDTH : TASK_TABLE_WIDTH}
           />
         </div>
         {access.isFull ? (

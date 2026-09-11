@@ -95,7 +95,7 @@ export function TeamStep({
       ) : null}
 
       {members.length > 0 ? (
-        <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {members.map((member) => {
             const user = byId.get(member.userId);
             if (!user) return null;
@@ -126,7 +126,7 @@ export function TeamStep({
                     <X className="size-4" />
                   </button>
                 </div>
-                <div className="mt-3 grid gap-2.5 border-t border-line pt-2.5 sm:grid-cols-2">
+                <div className="mt-3 grid grid-cols-1 gap-2.5 border-t border-line pt-2.5 sm:grid-cols-2">
                   <div>
                     <label
                       htmlFor={`role-${member.userId}`}

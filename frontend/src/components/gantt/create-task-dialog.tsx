@@ -293,7 +293,7 @@ export function CreateTaskDialog({
                 />
               </div>
             ) : projectTasks.length > 0 ? (
-              <div className={cn("grid gap-3", hasMilestoneTasks && "sm:grid-cols-2")}>
+              <div className={cn("grid grid-cols-1 gap-3", hasMilestoneTasks && "sm:grid-cols-2")}>
                 <div className="space-y-1.5">
                   <Label htmlFor="task-predecessor">Идёт после задачи</Label>
                   <Select

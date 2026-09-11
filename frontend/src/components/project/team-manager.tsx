@@ -149,7 +149,7 @@ export function TeamManager({
             <CardTitle>Добавить участника</CardTitle>
           </CardHeader>
           <CardBody className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-[1.4fr_1fr_1fr_auto]">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
               <div>
                 <label htmlFor="team-user" className="text-xs text-ink-faint">
                   Пользователь
@@ -295,45 +295,51 @@ function MemberRow({
       </div>
 
       {canManage ? (
-        <>
-          <Select
-            value={member.projectRole}
-            onChange={(event) => changeRole(event.target.value as ProjectRole)}
-            disabled={busy}
-            aria-label={`Роль ${member.user.fullName}`}
-            className="h-8 w-44"
-          >
-            {ROLE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
+        // На телефоне селекты уходят на свою строку во всю ширину: рядом с
+        // аватаром от имени оставалось бы «Елен…».
+        <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:w-auto">
+          <div className="col-start-1 min-w-0 sm:w-44">
+            <Select
+              value={member.projectRole}
+              onChange={(event) => changeRole(event.target.value as ProjectRole)}
+              disabled={busy}
+              aria-label={`Роль ${member.user.fullName}`}
+              className="h-8"
+            >
+              {ROLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </div>
 
-          <Select
-            value={member.accessLevel}
-            onChange={(event) => changeAccess(event.target.value as AccessLevel)}
-            disabled={busy}
-            aria-label={`Уровень доступа ${member.user.fullName}`}
-            className="h-8 w-44"
-          >
-            {ACCESS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
+          <div className="col-start-1 min-w-0 sm:w-44">
+            <Select
+              value={member.accessLevel}
+              onChange={(event) => changeAccess(event.target.value as AccessLevel)}
+              disabled={busy}
+              aria-label={`Уровень доступа ${member.user.fullName}`}
+              className="h-8"
+            >
+              {ACCESS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </div>
 
           <button
             type="button"
             onClick={() => removeMember.mutate(member.id)}
             disabled={busy}
             aria-label={`Исключить ${member.user.fullName}`}
-            className="shrink-0 rounded-control p-1.5 text-ink-faint transition-colors hover:text-danger focus-visible:focus-ring disabled:opacity-50"
+            className="col-start-2 row-span-2 row-start-1 shrink-0 rounded-control p-1.5 text-ink-faint transition-colors hover:text-danger focus-visible:focus-ring disabled:opacity-50"
           >
             <Trash2 className="size-4" />
           </button>
-        </>
+        </div>
       ) : (
         <Badge tone={ACCESS_TONE[member.accessLevel]} size="sm">
           {ACCESS_LABEL[member.accessLevel]}

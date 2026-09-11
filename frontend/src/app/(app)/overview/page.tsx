@@ -78,7 +78,7 @@ export default function OverviewPage() {
         }
       />
 
-      <div className={workloadItems.length > 0 ? "grid gap-4 lg:grid-cols-[1.4fr_1fr]" : "space-y-4"}>
+      <div className={workloadItems.length > 0 ? "grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]" : "space-y-4"}>
         <div className="space-y-4">
           {data.risks.map((risk) => (
             <RiskCard key={risk.title} risk={risk} />

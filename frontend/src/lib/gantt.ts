@@ -137,3 +137,9 @@ export function weekendBands(range: TimelineRange): TimelineColumn[] {
  * график к сегодняшнему дню. Импорт друг из друга дал бы цикл.
  */
 export const TASK_TABLE_WIDTH = 600;
+
+/**
+ * Реестр на телефоне: только номер и название. Полные 600px шире экрана
+ * в 375px — приморожённый реестр закрывал бы таймлайн целиком.
+ */
+export const TASK_TABLE_COMPACT_WIDTH = 200;

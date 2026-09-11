@@ -95,11 +95,22 @@ export function KanbanBoard({ projectId, tasks }: { projectId: string; tasks: Ta
     if (from) move(task, column, from);
   };
 
-  const hint = access.isFull
-    ? "Перетащите карточку в другую колонку, чтобы сменить статус."
-    : access.isEdit
-      ? "Переносить между колонками можно только задачи, где вы исполнитель."
-      : "У вас доступ только на просмотр — статусы менять нельзя.";
+  // На сенсорных экранах HTML5 drag-and-drop не работает, поэтому подсказка
+  // ведёт к кнопке «Переместить» на карточке, а не к перетаскиванию.
+  const hint = access.isFull ? (
+    <>
+      <span className="pointer-coarse:hidden">
+        Перетащите карточку в другую колонку, чтобы сменить статус.
+      </span>
+      <span className="hidden pointer-coarse:inline">
+        Кнопка со стрелкой на карточке переносит её в другую колонку.
+      </span>
+    </>
+  ) : access.isEdit ? (
+    "Переносить между колонками можно только задачи, где вы исполнитель."
+  ) : (
+    "У вас доступ только на просмотр — статусы менять нельзя."
+  );
 
   return (
     <div className="space-y-4">
@@ -133,7 +144,7 @@ export function KanbanBoard({ projectId, tasks }: { projectId: string; tasks: Ta
         </Alert>
       ) : null}
 
-      <div className="grid items-start gap-4 md:grid-cols-3" data-tour="board">
+      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-3" data-tour="board">
         {BOARD_COLUMNS.map((column) => {
           const items = columns[column.id];
           const canDropHere =

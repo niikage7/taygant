@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, Circle, CircleCheck, CircleDot, Flag } from 
 import Link from "next/link";
 
 import { ROW_HEIGHT } from "@/components/gantt/timeline";
-import { TASK_TABLE_WIDTH } from "@/lib/gantt";
+import { TASK_TABLE_COMPACT_WIDTH, TASK_TABLE_WIDTH } from "@/lib/gantt";
 import { UserHoverCard } from "@/components/user/user-card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ export function TaskTable({
   collapsed,
   onToggleCollapse,
   highlightCriticalPath,
+  compact = false,
 }: {
   /** Готовые строки в порядке отрисовки — тот же массив получает таймлайн. */
   rows: GanttRow[];
@@ -32,6 +33,8 @@ export function TaskTable({
   collapsed: ReadonlySet<string>;
   onToggleCollapse: (milestoneId: string) => void;
   highlightCriticalPath: boolean;
+  /** Узкий экран: только номер и название, остальное видно в карточке задачи. */
+  compact?: boolean;
 }) {
   // Критический путь проходит через несколько задач, но в макете красным
   // выделена только та, что реально отстаёт: подсветка означает «требует
@@ -48,16 +51,22 @@ export function TaskTable({
     // сейчас видно. Непрозрачный фон обязателен — под ним проезжает таймлайн.
     <div
       className="sticky left-0 z-20 shrink-0 border-r border-line bg-surface"
-      style={{ width: TASK_TABLE_WIDTH }}
+      style={{ width: compact ? TASK_TABLE_COMPACT_WIDTH : TASK_TABLE_WIDTH }}
     >
       <div className="sticky top-0 z-10 flex h-12 items-end border-b border-line bg-surface px-3 pb-2 text-2xs tracking-wider text-ink-faint uppercase">
         <span className="w-8 shrink-0 font-semibold">#</span>
-        <span className="min-w-0 flex-1 truncate font-semibold">Наименование задачи</span>
-        <span className="w-30 shrink-0 truncate pl-2 font-semibold">Исполнитель</span>
-        <span className="w-20 shrink-0 font-semibold">Сроки</span>
-        <span className="w-10 shrink-0 text-right font-semibold">Дней</span>
-        <span className="w-24 shrink-0 pl-3 font-semibold">Статус</span>
-        <span className="w-12 shrink-0 text-right font-semibold">Пред.</span>
+        <span className="min-w-0 flex-1 truncate font-semibold">
+          {compact ? "Задача" : "Наименование задачи"}
+        </span>
+        {compact ? null : (
+          <>
+            <span className="w-30 shrink-0 truncate pl-2 font-semibold">Исполнитель</span>
+            <span className="w-20 shrink-0 font-semibold">Сроки</span>
+            <span className="w-10 shrink-0 text-right font-semibold">Дней</span>
+            <span className="w-24 shrink-0 pl-3 font-semibold">Статус</span>
+            <span className="w-12 shrink-0 text-right font-semibold">Пред.</span>
+          </>
+        )}
       </div>
 
       <ul>
@@ -104,14 +113,16 @@ export function TaskTable({
                   {milestone.name}
                 </span>
 
-                <Badge
-                  tone={complete ? "success" : childCount > 0 ? "accent" : "neutral"}
-                  size="sm"
-                >
-                  {milestone.tasksTotal > 0
-                    ? `${milestone.tasksDone} / ${milestone.tasksTotal}`
-                    : "нет задач"}
-                </Badge>
+                {compact ? null : (
+                  <Badge
+                    tone={complete ? "success" : childCount > 0 ? "accent" : "neutral"}
+                    size="sm"
+                  >
+                    {milestone.tasksTotal > 0
+                      ? `${milestone.tasksDone} / ${milestone.tasksTotal}`
+                      : "нет задач"}
+                  </Badge>
+                )}
 
                 <span className="shrink-0 font-mono text-2xs text-accent">
                   {formatDayMonth(milestone.plannedDate)}
@@ -204,6 +215,8 @@ export function TaskTable({
                 </span>
               </Link>
 
+              {compact ? null : (
+              <>
               <span className="flex w-30 shrink-0 items-center gap-1.5">
                 {task.assignee ? (
                   <UserHoverCard user={task.assignee}>
@@ -252,6 +265,8 @@ export function TaskTable({
               <span className="w-12 shrink-0 text-right font-mono text-xs text-brand">
                 {predecessor ? `#${wbsOf.get(predecessor) ?? "?"}` : "—"}
               </span>
+              </>
+              )}
             </li>
           );
         })}

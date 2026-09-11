@@ -115,7 +115,7 @@ export function TaskParams({
     <Card className="flex flex-col">
       <CardHeader>
         <CardTitle>Параметры задачи</CardTitle>
-        <span className="font-mono text-xs text-ink-faint">ID: {task.id}</span>
+        <span className="min-w-0 font-mono text-xs break-all text-ink-faint">ID: {task.id}</span>
       </CardHeader>
 
       <CardBody className="space-y-5">
@@ -359,7 +359,7 @@ export function TaskParams({
                 onChange={(event) => setNewCriterion(event.target.value)}
                 placeholder="Новый критерий приёмки"
                 aria-label="Новый критерий приёмки"
-                className="h-8"
+                className="h-8 min-w-0 flex-1"
               />
               <Button
                 type="submit"

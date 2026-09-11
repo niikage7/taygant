@@ -162,7 +162,7 @@ export function NewProjectForm({
           </Badge>
         }
       >
-        <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <div>
             <div className="flex items-baseline justify-between gap-3">
               <Label htmlFor="project-name">
@@ -207,7 +207,7 @@ export function NewProjectForm({
           />
         </div>
 
-        <div className="grid gap-4 rounded-control bg-surface-subtle p-4 lg:grid-cols-[1fr_auto_1fr_1.2fr]">
+        <div className="grid grid-cols-1 gap-4 rounded-control bg-surface-subtle p-4 lg:grid-cols-[1fr_auto_1fr_1.2fr]">
           <div>
             <Label htmlFor="project-start" className={SECTION}>
               Дата старта графика
@@ -290,7 +290,7 @@ export function NewProjectForm({
         subtitle="Вычислительное ядро расписания и логика сдвига дат"
         aside={<span className="font-mono text-xs text-ink-faint">CPM Engine v4.2</span>}
       >
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <ToggleCard
             checked={autoRecalculate}
             onChange={setAutoRecalculate}
