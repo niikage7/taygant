@@ -40,6 +40,46 @@ type dateRange struct {
 	End   models.Date
 }
 
+// isWorkday сообщает, является ли день рабочим по календарю проекта.
+// Пустой calendar (нулевое значение Graph.calendar, если WithCalendar не
+// вызывался) намеренно считает рабочим любой день — это и есть старое
+// поведение движка (чистая арифметика календарных дней), на которое
+// продолжают полагаться тесты пакета, не задающие календарь явно.
+func isWorkday(calendar models.WorkingCalendarType, d models.Date) bool {
+	if calendar == "" {
+		return true
+	}
+	weekday := d.Weekday()
+	if weekday == 0 { // воскресенье выходной в обоих календарях проекта
+		return false
+	}
+	if calendar == models.Calendar52 && weekday == 6 {
+		return false
+	}
+	return true
+}
+
+// addWorkdays сдвигает дату на n рабочих дней по календарю проекта (n может
+// быть отрицательным). В отличие от Date.AddDays, каждый шаг считается только
+// если он приземлился на рабочий день — невыходные дни между задачами
+// пропускаются, а не превращаются в кажущийся резерв.
+func addWorkdays(calendar models.WorkingCalendarType, d models.Date, n int) models.Date {
+	if n == 0 {
+		return d
+	}
+	step := 1
+	if n < 0 {
+		step, n = -1, -n
+	}
+	for n > 0 {
+		d = d.AddDays(step)
+		if isWorkday(calendar, d) {
+			n--
+		}
+	}
+	return d
+}
+
 // TaskSchedule — результат CPM для одной задачи.
 type TaskSchedule struct {
 	EarlyStart, EarlyFinish models.Date
@@ -64,10 +104,21 @@ type Summary struct {
 // Graph — граф проекта, подготовленный к расчёту (топологически отсортирован,
 // проверен на циклы).
 type Graph struct {
-	tasks map[uuid.UUID]Task
-	out   map[uuid.UUID][]Dependency // исходящие рёбра, ключ — PredecessorID
-	in    map[uuid.UUID][]Dependency // входящие рёбра, ключ — SuccessorID
-	order []uuid.UUID                // топологический порядок (предшественник раньше последователя)
+	tasks    map[uuid.UUID]Task
+	out      map[uuid.UUID][]Dependency // исходящие рёбра, ключ — PredecessorID
+	in       map[uuid.UUID][]Dependency // входящие рёбра, ключ — SuccessorID
+	order    []uuid.UUID                // топологический порядок (предшественник раньше последователя)
+	calendar models.WorkingCalendarType // рабочий календарь проекта; "" — см. isWorkday
+}
+
+// WithCalendar задаёт рабочий календарь проекта, по которому считаются
+// обязательные зазоры между связанными задачами (Compute и Shift). Без
+// вызова этого метода граф трактует каждый день как рабочий — расчёт идёт по
+// чистым календарным дням, как и раньше. Возвращает тот же граф для
+// цепочки вызовов сразу после NewGraph.
+func (g *Graph) WithCalendar(calendar models.WorkingCalendarType) *Graph {
+	g.calendar = calendar
+	return g
 }
 
 // NewGraph строит граф и топологически сортирует его алгоритмом Кана.
@@ -163,38 +214,46 @@ func (g *Graph) Edges() []Dependency {
 // считают, что «предшественник закончился 20-го» и «последователь начался
 // 21-го» — это лаг 0, а не 1. Здесь та же логика: FS с lag=0 разрешает старт
 // на следующий день после конца предшественника, а не в тот же день.
-func requiredSuccessorStart(pred dateRange, d Dependency, succDuration int) models.Date {
+//
+// Единица "1 + lag" (и просто "lag" для SS/FF/SF) — это шаг вдоль ребра
+// зависимости, а не длительность самой задачи, поэтому именно она считается
+// в рабочих днях календаря (calendar): не пропускать выходные тут означало бы
+// давать последователю право начаться в субботу. succDuration — это
+// собственный календарный размах последователя (End-Start уже сохранённых
+// дат), к шагу по ребру отношения не имеет и вычитается как обычные сутки.
+func requiredSuccessorStart(calendar models.WorkingCalendarType, pred dateRange, d Dependency, succDuration int) models.Date {
 	switch d.Type {
 	case models.DependencyFS:
-		return pred.End.AddDays(1 + d.LagDays)
+		return addWorkdays(calendar, pred.End, 1+d.LagDays)
 	case models.DependencySS:
-		return pred.Start.AddDays(d.LagDays)
+		return addWorkdays(calendar, pred.Start, d.LagDays)
 	case models.DependencyFF:
 		// succ.End >= pred.End + lag  =>  succ.Start >= pred.End + lag - duration
-		return pred.End.AddDays(d.LagDays - succDuration)
+		return addWorkdays(calendar, pred.End, d.LagDays).AddDays(-succDuration)
 	case models.DependencySF:
 		// succ.End >= pred.Start + lag  =>  succ.Start >= pred.Start + lag - duration
-		return pred.Start.AddDays(d.LagDays - succDuration)
+		return addWorkdays(calendar, pred.Start, d.LagDays).AddDays(-succDuration)
 	default:
-		return pred.End.AddDays(1 + d.LagDays)
+		return addWorkdays(calendar, pred.End, 1+d.LagDays)
 	}
 }
 
 // maxPredecessorFinish — обратная к requiredSuccessorStart: самая поздняя дата
 // завершения предшественника, при которой последователь ещё успевает в свои
-// поздние даты succLate.
-func maxPredecessorFinish(succLate dateRange, d Dependency, predDuration int) models.Date {
+// поздние даты succLate. См. requiredSuccessorStart про то, почему шаг по
+// ребру считается в рабочих днях, а predDuration — нет.
+func maxPredecessorFinish(calendar models.WorkingCalendarType, succLate dateRange, d Dependency, predDuration int) models.Date {
 	switch d.Type {
 	case models.DependencyFS:
-		return succLate.Start.AddDays(-1 - d.LagDays)
+		return addWorkdays(calendar, succLate.Start, -1-d.LagDays)
 	case models.DependencySS:
-		return succLate.Start.AddDays(-d.LagDays).AddDays(predDuration)
+		return addWorkdays(calendar, succLate.Start, -d.LagDays).AddDays(predDuration)
 	case models.DependencyFF:
-		return succLate.End.AddDays(-d.LagDays)
+		return addWorkdays(calendar, succLate.End, -d.LagDays)
 	case models.DependencySF:
-		return succLate.End.AddDays(-d.LagDays).AddDays(predDuration)
+		return addWorkdays(calendar, succLate.End, -d.LagDays).AddDays(predDuration)
 	default:
-		return succLate.Start.AddDays(-1 - d.LagDays)
+		return addWorkdays(calendar, succLate.Start, -1-d.LagDays)
 	}
 }
 
@@ -209,7 +268,7 @@ func (g *Graph) forward() map[uuid.UUID]dateRange {
 		start := t.Start
 		for _, d := range g.in[id] {
 			pred := result[d.PredecessorID]
-			required := requiredSuccessorStart(pred, d, duration)
+			required := requiredSuccessorStart(g.calendar, pred, d, duration)
 			if required.After(start) {
 				start = required
 			}
@@ -232,7 +291,7 @@ func (g *Graph) backward(target models.Date) map[uuid.UUID]dateRange {
 		first := true
 		for _, d := range g.out[id] {
 			succLate := result[d.SuccessorID]
-			allowed := maxPredecessorFinish(succLate, d, duration)
+			allowed := maxPredecessorFinish(g.calendar, succLate, d, duration)
 			if first || allowed.Before(finish) {
 				finish = allowed
 				first = false
@@ -311,7 +370,7 @@ func (g *Graph) Shift(sourceID uuid.UUID, newStart models.Date) ([]ShiftedTask, 
 			if !changed[d.PredecessorID] {
 				continue
 			}
-			required := requiredSuccessorStart(current[d.PredecessorID], d, duration)
+			required := requiredSuccessorStart(g.calendar, current[d.PredecessorID], d, duration)
 			if required.After(start) {
 				start = required
 				moved = true

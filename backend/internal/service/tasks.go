@@ -77,6 +77,10 @@ func buildProjectGraph(ctx context.Context, db *gorm.DB, projectID uuid.UUID) (*
 	if err != nil {
 		return nil, err
 	}
+	var project models.Project
+	if err := db.WithContext(ctx).Select("working_calendar_type").First(&project, "id = ?", projectID).Error; err != nil {
+		return nil, fmt.Errorf("найти рабочий календарь проекта: %w", err)
+	}
 
 	nodes := make([]schedule.Task, len(rows))
 	for i, t := range rows {
@@ -95,7 +99,7 @@ func buildProjectGraph(ctx context.Context, db *gorm.DB, projectID uuid.UUID) (*
 	if err != nil {
 		return nil, fmt.Errorf("рассчитать критический путь: %w", err)
 	}
-	return graph, nil
+	return graph.WithCalendar(project.WorkingCalendarType), nil
 }
 
 // Filter — параметры выборки задач из GET /projects/{projectId}/tasks.
@@ -137,7 +141,7 @@ func (s *Tasks) List(ctx context.Context, projectID uuid.UUID, calendar models.P
 	}
 	resolveStatuses(tasks, statusMap(tasks), deps)
 	applyDerivedFields(tasks, calendar)
-	if err := applySchedule(tasks, deps); err != nil {
+	if err := applySchedule(tasks, deps, calendar.WorkingCalendarType); err != nil {
 		return nil, err
 	}
 
@@ -236,7 +240,7 @@ func applyDerivedFields(tasks []models.Task, project models.Project) {
 // и проставляет IsCriticalPath/BufferDays. tasks должен содержать ВСЕ задачи
 // проекта (как и deps), а не отфильтрованную выборку — иначе расчёт резерва
 // потеряет часть графа и даст неверный результат для оставшихся задач.
-func applySchedule(tasks []models.Task, deps []models.TaskDependency) error {
+func applySchedule(tasks []models.Task, deps []models.TaskDependency, calendar models.WorkingCalendarType) error {
 	nodes := make([]schedule.Task, len(tasks))
 	for i, t := range tasks {
 		nodes[i] = schedule.Task{ID: t.ID, Start: t.StartDate, End: t.EndDate}
@@ -258,7 +262,7 @@ func applySchedule(tasks []models.Task, deps []models.TaskDependency) error {
 		// вернуть 500 с понятной причиной, чем молча отдать неверный CPM.
 		return fmt.Errorf("рассчитать критический путь: %w", err)
 	}
-	summary := graph.Compute()
+	summary := graph.WithCalendar(calendar).Compute()
 
 	for i := range tasks {
 		result, ok := summary.Tasks[tasks[i].ID]

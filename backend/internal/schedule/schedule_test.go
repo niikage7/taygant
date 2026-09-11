@@ -132,6 +132,91 @@ func TestComputeFinishIsGraphsOwn(t *testing.T) {
 // Сравнение ComputedFinish с дедлайном (сорван ли срок и на сколько) — забота
 // вызывающего кода (дашборда), не этого теста: пакет schedule дедлайна не видит.
 
+// Без явного WithCalendar выходные между задачами по-прежнему читаются как
+// резерв (обратная совместимость со старым поведением): A заканчивается в
+// пятницу 2026-01-02, B по плану стартует только в понедельник 2026-01-05 —
+// это самый плотный легальный график при пятидневке, но чистая календарная
+// арифметика показывает у A 2 дня "резерва" (пустые выходные), которых по
+// факту нет.
+func TestComputeWithoutCalendarCountsWeekendAsSlack(t *testing.T) {
+	a, b := newID(t), newID(t)
+	tasks := []Task{
+		{ID: a, Start: d(2026, 1, 1), End: d(2026, 1, 2)}, // чт-пт
+		{ID: b, Start: d(2026, 1, 5), End: d(2026, 1, 9)}, // пн-пт
+	}
+	deps := []Dependency{{PredecessorID: a, SuccessorID: b, Type: models.DependencyFS}}
+
+	g, err := NewGraph(tasks, deps)
+	if err != nil {
+		t.Fatalf("NewGraph: %v", err)
+	}
+	summary := g.Compute()
+
+	if summary.Tasks[a].SlackDays != 2 {
+		t.Fatalf("SlackDays(a) без календаря = %d, ожидалось 2 (пт+сб+вс читаются как резерв)", summary.Tasks[a].SlackDays)
+	}
+	if summary.Tasks[a].Critical {
+		t.Fatal("без календаря a ошибочно не считается критической — в этом и был баг")
+	}
+}
+
+// С WithCalendar(Calendar52) тот же график (A: чт-пт, B: следующий пн) больше
+// не считает субботу и воскресенье резервом — это и есть исправление бага
+// "выходные между задачами читаются как резерв": обе задачи критические,
+// резерва нет ни у одной.
+func TestComputeWithCalendarSkipsWeekendGap(t *testing.T) {
+	a, b := newID(t), newID(t)
+	tasks := []Task{
+		{ID: a, Start: d(2026, 1, 1), End: d(2026, 1, 2)}, // чт-пт
+		{ID: b, Start: d(2026, 1, 5), End: d(2026, 1, 9)}, // пн-пт, первый рабочий день после пятницы
+	}
+	deps := []Dependency{{PredecessorID: a, SuccessorID: b, Type: models.DependencyFS}}
+
+	g, err := NewGraph(tasks, deps)
+	if err != nil {
+		t.Fatalf("NewGraph: %v", err)
+	}
+	summary := g.WithCalendar(models.Calendar52).Compute()
+
+	if summary.Tasks[a].SlackDays != 0 {
+		t.Fatalf("SlackDays(a) при календаре 5/2 = %d, ожидалось 0 — это плотнейший легальный график", summary.Tasks[a].SlackDays)
+	}
+	if !summary.Tasks[a].Critical || !summary.Tasks[b].Critical {
+		t.Fatalf("при календаре 5/2 обе задачи должны быть критическими, получено a=%+v b=%+v", summary.Tasks[a], summary.Tasks[b])
+	}
+}
+
+// Shift тоже учитывает календарь: сдвиг задачи через выходные каскадируется
+// до ближайшего рабочего дня последователя, а не до календарной субботы.
+func TestShiftWithCalendarLandsOnNextWorkday(t *testing.T) {
+	a, b := newID(t), newID(t)
+	tasks := []Task{
+		{ID: a, Start: d(2026, 1, 1), End: d(2026, 1, 2)}, // чт-пт
+		{ID: b, Start: d(2026, 1, 5), End: d(2026, 1, 9)}, // пн-пт
+	}
+	deps := []Dependency{{PredecessorID: a, SuccessorID: b, Type: models.DependencyFS}}
+	g, err := NewGraph(tasks, deps)
+	if err != nil {
+		t.Fatalf("NewGraph: %v", err)
+	}
+	g.WithCalendar(models.Calendar52)
+
+	// Сдвигаем A на неделю вперёд: новый старт — четверг 2026-01-08, новый
+	// конец — пятница 2026-01-09.
+	result, err := g.Shift(a, d(2026, 1, 8))
+	if err != nil {
+		t.Fatalf("Shift: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("ожидались обе задачи в результате, получено %d: %+v", len(result), result)
+	}
+	// Требуемый старт B после пятницы 2026-01-09 — ближайший рабочий день,
+	// понедельник 2026-01-12, а не календарная суббота 2026-01-10.
+	if !result[1].NewStart.Equal(d(2026, 1, 12)) {
+		t.Fatalf("B.NewStart = %s, ожидалось 2026-01-12 (ближайший рабочий день после пятницы, а не суббота)", result[1].NewStart)
+	}
+}
+
 // Цикл в графе — ошибка, а не штатный сценарий (сервис связей его не
 // допускает), но движок обязан её ловить, а не зависать или молча всё пропустить.
 func TestNewGraphDetectsCycle(t *testing.T) {

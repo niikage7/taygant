@@ -155,7 +155,7 @@ func (s *Simulation) run(ctx context.Context, actorID, taskID uuid.UUID, in Shif
 	if err != nil {
 		return Result{}, fmt.Errorf("построить граф после сдвига: %w", err)
 	}
-	after := afterGraph.Compute()
+	after := afterGraph.WithCalendar(project.WorkingCalendarType).Compute()
 
 	affected := make([]AffectedTask, 0, len(shifted))
 	for _, sh := range shifted {
