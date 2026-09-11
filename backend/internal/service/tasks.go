@@ -111,31 +111,23 @@ type Filter struct {
 
 // List возвращает задачи проекта с вычисленными статусами и длительностями.
 //
-// Фильтр по статусу применяется уже после вычисления effective-статуса
-// (overdue/blocked пользователь в БД не хранит — см. resolveStatuses), поэтому
-// он не переносится в SQL WHERE и выполняется в Go после загрузки.
+// Все фильтры (включая status/criticalPathOnly/risksOnly) применяются в Go
+// после загрузки ВСЕХ задач проекта, а не в SQL WHERE. Причина не только в
+// том, что overdue/blocked пользователь в БД не хранит (см. resolveStatuses) —
+// resolveStatuses и applySchedule сами по себе требуют полный граф проекта:
+// предшественник или узел CPM, отсеянный фильтром (например, «только мои
+// задачи» или «только этот спринт»), не должен пропадать из расчёта для
+// оставшихся задач. Если бы блокировку и критический путь считали на уже
+// урезанной SQL-запросом выборке, задача могла бы ошибочно остаться blocked
+// после того, как её предшественник (не входящий в выборку) завершён.
 func (s *Tasks) List(ctx context.Context, projectID uuid.UUID, calendar models.Project, f Filter) ([]models.Task, error) {
-	query := s.db.WithContext(ctx).
+	var tasks []models.Task
+	err := s.db.WithContext(ctx).
 		Preload("Assignee").
 		Where("project_id = ?", projectID).
-		Order("order_index")
-
-	if f.SprintID != nil {
-		query = query.Where("sprint_id = ?", *f.SprintID)
-	}
-	if f.AssigneeID != nil {
-		query = query.Where("assignee_id = ?", *f.AssigneeID)
-	}
-	if f.MilestoneID != nil {
-		query = query.Where("milestone_id = ?", *f.MilestoneID)
-	}
-	if search := strings.TrimSpace(f.Search); search != "" {
-		pattern := "%" + escapeLikePattern(search) + "%"
-		query = query.Where("title ILIKE ? OR code ILIKE ?", pattern, pattern)
-	}
-
-	var tasks []models.Task
-	if err := query.Find(&tasks).Error; err != nil {
+		Order("order_index").
+		Find(&tasks).Error
+	if err != nil {
 		return nil, fmt.Errorf("выбрать задачи: %w", err)
 	}
 
@@ -149,8 +141,22 @@ func (s *Tasks) List(ctx context.Context, projectID uuid.UUID, calendar models.P
 		return nil, err
 	}
 
+	search := strings.TrimSpace(f.Search)
+
 	filtered := tasks[:0]
 	for _, t := range tasks {
+		if f.SprintID != nil && (t.SprintID == nil || *t.SprintID != *f.SprintID) {
+			continue
+		}
+		if f.AssigneeID != nil && (t.AssigneeID == nil || *t.AssigneeID != *f.AssigneeID) {
+			continue
+		}
+		if f.MilestoneID != nil && (t.MilestoneID == nil || *t.MilestoneID != *f.MilestoneID) {
+			continue
+		}
+		if search != "" && !strings.Contains(strings.ToLower(t.Title), strings.ToLower(search)) && !strings.Contains(strings.ToLower(t.Code), strings.ToLower(search)) {
+			continue
+		}
 		if f.Status != "" && t.Status != f.Status {
 			continue
 		}
