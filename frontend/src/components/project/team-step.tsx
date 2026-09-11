@@ -1,9 +1,11 @@
 "use client";
 
-import { UserPlus, X } from "lucide-react";
+import { Search, UserPlus, X } from "lucide-react";
+import { useState } from "react";
 
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { AccessLevel, ProjectRole, User } from "@/types";
 
@@ -47,8 +49,13 @@ export function TeamStep({
 }) {
   const byId = new Map(users.map((user) => [user.id, user]));
   const selectedIds = new Set(members.map((member) => member.userId));
+  const [emailQuery, setEmailQuery] = useState("");
+  const query = emailQuery.trim().toLowerCase();
   const available = users.filter(
-    (user) => user.id !== currentUser?.id && !selectedIds.has(user.id),
+    (user) =>
+      user.id !== currentUser?.id &&
+      !selectedIds.has(user.id) &&
+      (!query || user.email.toLowerCase().includes(query)),
   );
 
   return (
@@ -185,33 +192,47 @@ export function TeamStep({
         </p>
       )}
 
-      {available.length > 0 ? (
-        <label className="flex flex-wrap items-center gap-2">
+      {users.length > 1 ? (
+        <div className="flex flex-wrap items-center gap-2">
           <span className="flex items-center gap-1.5 text-[13px] font-medium text-brand">
             <UserPlus className="size-4" />
             Добавить участника
           </span>
+          <Input
+            type="search"
+            value={emailQuery}
+            onChange={(event) => setEmailQuery(event.target.value)}
+            icon={<Search className="size-4" />}
+            placeholder="Поиск по email…"
+            aria-label="Поиск участника по email"
+            className="h-8 w-64"
+          />
           <Select
             value=""
             aria-label="Добавить участника в проект"
             onChange={(event) => {
               if (!event.target.value) return;
+              setEmailQuery("");
               onChange([
                 ...members,
                 { userId: event.target.value, projectRole: "developer", accessLevel: "edit" },
               ]);
             }}
             className="h-8 w-64"
+            disabled={available.length === 0}
           >
-            <option value="">Выберите пользователя…</option>
+            <option value="">
+              {available.length === 0 ? "Никого не найдено" : "Выберите пользователя…"}
+            </option>
             {available.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.fullName}
                 {user.position ? ` — ${user.position}` : ""}
+                {` — ${user.email}`}
               </option>
             ))}
           </Select>
-        </label>
+        </div>
       ) : null}
     </div>
   );
