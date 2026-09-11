@@ -18,6 +18,7 @@ import {
   workloadService,
 } from "@/services";
 import type {
+  AssignableTaskStatus,
   Comment,
   GanttChart,
   GanttScale,
@@ -39,7 +40,6 @@ import type {
   TaskCreateRequest,
   TaskDependencyCreateRequest,
   TaskDetail,
-  TaskStatus,
   TaskUpdateRequest,
   User,
 } from "@/types";
@@ -102,11 +102,26 @@ export function useProject(projectId: string | undefined): UseQueryResult<Projec
   });
 }
 
-export function useTasks(projectId: string | undefined): UseQueryResult<Task[]> {
+/**
+ * Задачи проекта — общий кэш для оболочки, поиска, Ганта и канбан-доски.
+ *
+ * `live` включает регулярное обновление и перезапрос при возврате в вкладку.
+ * Нужно доске: это единственный экран, где над одними и теми же карточками
+ * одновременно работают несколько человек, и перенос, сделанный соседом, иначе
+ * не появился бы до перезагрузки страницы — а перетаскивание устаревшей
+ * карточки молча перетёрло бы чужой перенос. Ключ у запроса общий, поэтому
+ * опция действует, только пока доска открыта.
+ */
+export function useTasks(
+  projectId: string | undefined,
+  options?: { live?: boolean },
+): UseQueryResult<Task[]> {
   return useQuery({
     queryKey: queryKeys.tasks(projectId ?? ""),
     queryFn: () => tasksService.list(projectId as string),
     enabled: Boolean(projectId),
+    refetchInterval: options?.live ? 15_000 : false,
+    refetchOnWindowFocus: options?.live ?? false,
   });
 }
 
@@ -182,13 +197,19 @@ export function useUpdateTaskStatus(projectId: string | undefined) {
   const queryClient = useQueryClient();
   const key = queryKeys.tasks(projectId ?? "");
   return useMutation({
-    mutationFn: ({ taskId, status }: { taskId: string; status: TaskStatus }) =>
+    mutationFn: ({ taskId, status }: { taskId: string; status: AssignableTaskStatus }) =>
       tasksService.update(taskId, { status }),
+    // Меняем и baseStatus: именно по нему канбан-доска раскладывает карточки,
+    // а status сервер всё равно может вернуть вычисленным (overdue/blocked).
+    // Откат в onError возвращает оба поля, поэтому неудавшийся перенос не
+    // оставляет карточку в чужой колонке.
     onMutate: async ({ taskId, status }) => {
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<Task[]>(key);
       queryClient.setQueryData<Task[]>(key, (tasks) =>
-        tasks?.map((task) => (task.id === taskId ? { ...task, status } : task)),
+        tasks?.map((task) =>
+          task.id === taskId ? { ...task, status, baseStatus: status } : task,
+        ),
       );
       return { previous };
     },

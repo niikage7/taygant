@@ -196,6 +196,9 @@ func resolveStatuses(tasks []models.Task, statusByID map[uuid.UUID]models.TaskSt
 
 	today := models.Today()
 	for i := range tasks {
+		// Хранимый статус сохраняем до подмены: клиенту нужны оба (см.
+		// models.Task.StoredStatus).
+		tasks[i].BaseStatus = tasks[i].Status
 		switch {
 		case tasks[i].Status == models.TaskStatusDone:
 			// финальный статус, ничего не пересчитываем
@@ -420,6 +423,46 @@ func (s *Tasks) Create(ctx context.Context, projectID, actorID uuid.UUID, in Tas
 	return s.Get(ctx, task.ID)
 }
 
+// progressBeforeCompletion — процент выполнения, который был у задачи перед
+// тем, как её закрыли и прогресс подскочил до 100. Берётся из журнала: он и так
+// пишется на каждое изменение процента, поэтому отдельное поле «прогресс до
+// закрытия» в таблице было бы дублированием. Нет такой записи (задачу закрыли
+// ещё до появления синхронизации, журнал подчистили) — считаем, что работа не
+// начиналась.
+func progressBeforeCompletion(tx *gorm.DB, taskID uuid.UUID) (int, error) {
+	var entry models.TaskHistoryEntry
+	err := tx.Where("task_id = ? AND action = ? AND new_value = ?", taskID, models.HistoryActionProgressSet, "100").
+		Order("created_at DESC").
+		First(&entry).Error
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return 0, nil
+	case err != nil:
+		return 0, fmt.Errorf("найти прогресс до закрытия задачи: %w", err)
+	}
+	if entry.OldValue == nil {
+		return 0, nil
+	}
+	value, err := strconv.Atoi(*entry.OldValue)
+	if err != nil || value < 0 || value > 100 {
+		return 0, nil
+	}
+	return value, nil
+}
+
+// setProgress меняет процент выполнения и пишет об этом в историю. Вынесен из
+// Update, потому что процент задаётся из двух мест: явным полем запроса и
+// синхронизацией со статусом при закрытии/переоткрытии задачи.
+func setProgress(tx *gorm.DB, task *models.Task, value int, taskID, actorID uuid.UUID) error {
+	if task.ProgressPercent == value {
+		return nil
+	}
+	old := strconv.Itoa(task.ProgressPercent)
+	newValue := strconv.Itoa(value)
+	task.ProgressPercent = value
+	return recordHistory(tx, taskID, actorID, models.HistoryActionProgressSet, strPtr("progressPercent"), &old, &newValue)
+}
+
 // userSettableStatus запрещает клиенту напрямую выставлять статусы, которые
 // система вычисляет сама (см. resolveStatuses).
 func userSettableStatus(status models.TaskStatus) bool {
@@ -587,11 +630,20 @@ func (s *Tasks) Get(ctx context.Context, taskID uuid.UUID) (models.Task, error) 
 }
 
 // Update частично обновляет задачу, ведёт журнал изменений по каждому
-// изменённому полю и синхронизирует фактические даты со статусом:
-// переход в in_progress проставляет ActualStartDate, переход в done — ActualEndDate,
-// если они ещё не заданы. Без этого плановое/фактическое отклонение (см. Task
-// в api-spec.yml) никогда бы не заполнялось для задач, которые ведут через статус,
-// а не отдельным полем фактических дат.
+// изменённому полю и синхронизирует со статусом фактические даты и прогресс.
+//
+// Фактические даты: переход в in_progress проставляет ActualStartDate, переход
+// в done — ActualEndDate, если они ещё не заданы. Без этого плановое/фактическое
+// отклонение (см. Task в api-spec.yml) никогда бы не заполнялось для задач,
+// которые ведут через статус, а не отдельным полем фактических дат. Обратные
+// переходы даты снимают: задача, возвращённая из done в план, не «завершена
+// с опережением на 9 дней» — именно так она и выглядела, пока ActualEndDate
+// оставался от прошлого закрытия.
+//
+// Прогресс: закрытие задачи ставит 100%, переоткрытие снимает автоматические
+// 100% и возвращает процент, который был до закрытия (progressBeforeCompletion).
+// Подробности и приоритет явного progressPercent — в комментарии у самой
+// синхронизации ниже.
 func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskInput) (models.Task, error) {
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var task models.Task
@@ -697,13 +749,8 @@ func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskIn
 			if *in.ProgressPercent < 0 || *in.ProgressPercent > 100 {
 				return Invalid("процент выполнения должен быть от 0 до 100")
 			}
-			if task.ProgressPercent != *in.ProgressPercent {
-				old := strconv.Itoa(task.ProgressPercent)
-				newValue := strconv.Itoa(*in.ProgressPercent)
-				task.ProgressPercent = *in.ProgressPercent
-				if err := recordHistory(tx, taskID, actorID, models.HistoryActionProgressSet, strPtr("progressPercent"), &old, &newValue); err != nil {
-					return err
-				}
+			if err := setProgress(tx, &task, *in.ProgressPercent, taskID, actorID); err != nil {
+				return err
 			}
 		}
 		if in.WeightPercent != nil {
@@ -720,7 +767,10 @@ func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskIn
 			}
 		}
 		if in.Status != nil {
-			if !userSettableStatus(*in.Status) {
+			switch {
+			case !in.Status.Valid():
+				return Invalid("недопустимый статус задачи %q", *in.Status)
+			case !userSettableStatus(*in.Status):
 				return Invalid("статус %q выставляется системой автоматически", *in.Status)
 			}
 			if task.Status != *in.Status {
@@ -728,15 +778,55 @@ func (s *Tasks) Update(ctx context.Context, taskID, actorID uuid.UUID, in TaskIn
 				if err := recordHistory(tx, taskID, actorID, models.HistoryActionStatusChanged, strPtr("status"), &old, strPtr(string(*in.Status))); err != nil {
 					return err
 				}
+				wasDone := task.Status == models.TaskStatusDone
 				task.Status = *in.Status
 				today := models.Today()
-				if task.Status == models.TaskStatusInProgress && task.ActualStartDate == nil {
-					task.ActualStartDate = &today
-				}
-				if task.Status == models.TaskStatusDone && task.ActualEndDate == nil {
-					task.ActualEndDate = &today
+				switch task.Status {
+				case models.TaskStatusInProgress:
 					if task.ActualStartDate == nil {
 						task.ActualStartDate = &today
+					}
+					// Задачу вернули в работу — факта завершения больше нет.
+					// Иначе отклонение план/факт продолжало бы считаться от
+					// снятой даты закрытия (см. models.Task.PlanVsActualDeviation).
+					task.ActualEndDate = nil
+				case models.TaskStatusDone:
+					if task.ActualEndDate == nil {
+						task.ActualEndDate = &today
+					}
+					if task.ActualStartDate == nil {
+						task.ActualStartDate = &today
+					}
+				case models.TaskStatusPlanned:
+					task.ActualStartDate = nil
+					task.ActualEndDate = nil
+				}
+
+				// Прогресс не следует за статусом сам по себе: это отдельное
+				// поле, и метрики проекта (service.ComputeMetrics) считаются
+				// только по нему. Без синхронизации задача, закрытая на доске
+				// перетаскиванием в «Завершены», не двигала прогресс проекта
+				// вовсе и показывала на карточке свои прежние 40%.
+				//
+				// Явный progressPercent в том же запросе приоритетнее: там
+				// человек назвал число сам. Переоткрытие снимает только
+				// автоматические 100% и возвращает процент, который был до
+				// закрытия: иначе задачу, случайно перетащенную на доске в
+				// «Завершены» и обратно, пришлось бы заполнять заново.
+				if in.ProgressPercent == nil {
+					switch {
+					case task.Status == models.TaskStatusDone && task.ProgressPercent != 100:
+						if err := setProgress(tx, &task, 100, taskID, actorID); err != nil {
+							return err
+						}
+					case wasDone && task.ProgressPercent == 100:
+						before, err := progressBeforeCompletion(tx, taskID)
+						if err != nil {
+							return err
+						}
+						if err := setProgress(tx, &task, before, taskID, actorID); err != nil {
+							return err
+						}
 					}
 				}
 			}

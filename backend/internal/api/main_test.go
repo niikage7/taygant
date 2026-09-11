@@ -305,6 +305,7 @@ type taskJSON struct {
 	Title                     string    `json:"title"`
 	Assignee                  *userJSON `json:"assignee"`
 	Status                    string    `json:"status"`
+	BaseStatus                string    `json:"baseStatus"`
 	StartDate                 string    `json:"startDate"`
 	EndDate                   string    `json:"endDate"`
 	DurationCalendarDays      int       `json:"durationCalendarDays"`

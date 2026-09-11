@@ -16,12 +16,13 @@ import { pluralizeCount } from "@/lib/format";
  * Реестр задач проекта вне Ганта — канбан-доска по статусам.
  *
  * Задачи берутся тем же `useTasks`, что и в оболочке и поиске: ключ общий,
- * лишнего запроса при переходе на доску нет.
+ * лишнего запроса при переходе на доску нет. `live` добавляет к этому
+ * регулярное обновление — на доске карточки двигает вся команда сразу.
  */
 export default function BoardPage() {
   const { projectId, isEmpty, error: projectsError } = useCurrentProject();
   const project = useProject(projectId);
-  const tasks = useTasks(projectId);
+  const tasks = useTasks(projectId, { live: true });
 
   if (projectsError) return <PageError error={projectsError} />;
   if (isEmpty) return <EmptyProjects />;

@@ -40,6 +40,13 @@ export type TaskStatus =
   | "blocked";
 
 /**
+ * Статус, который выставляет человек. `overdue` и `blocked` сервер вычисляет
+ * из дат и незакрытых предшественников и в запросе отклоняет — см. `baseStatus`
+ * у задачи и `ASSIGNABLE_TASK_STATUSES` в `lib/task-status.ts`.
+ */
+export type AssignableTaskStatus = Extract<TaskStatus, "planned" | "in_progress" | "done">;
+
+/**
  * Тип связи между задачами по методу критического пути (CPM):
  * FS (Finish-to-Start) — предшественник должен завершиться до начала последователя;
  * SS (Start-to-Start) — задачи должны начаться одновременно;

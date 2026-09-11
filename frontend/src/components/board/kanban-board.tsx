@@ -15,12 +15,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { useProjectAccess } from "@/data/project-access";
 import { useUpdateTaskStatus } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
-import {
-  BOARD_COLUMNS,
-  groupByColumn,
-  rememberPlacement,
-  type BoardColumnId,
-} from "@/lib/board";
+import { BOARD_COLUMNS, groupByColumn, type BoardColumnId } from "@/lib/board";
 import { formatDayMonth, pluralizeCount } from "@/lib/format";
 import { TASK_STATUS_META, isAssignableStatus } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
@@ -80,7 +75,6 @@ export function KanbanBoard({ projectId, tasks }: { projectId: string; tasks: Ta
 
   const move = (task: Task, column: BoardColumnId, from: BoardColumnId) => {
     if (column === from || !access.canEditTask(task)) return;
-    rememberPlacement(task.id, column);
     updateStatus.mutate({ taskId: task.id, status: column });
   };
 
@@ -97,7 +91,13 @@ export function KanbanBoard({ projectId, tasks }: { projectId: string; tasks: Ta
 
   // На сенсорных экранах HTML5 drag-and-drop не работает, поэтому подсказка
   // ведёт к кнопке «Переместить» на карточке, а не к перетаскиванию.
-  const hint = access.isFull ? (
+  //
+  // Пока список участников не загружен, уровень доступа неизвестен и все флаги
+  // выключены. Без отдельной ветки это выглядело бы как «у вас доступ только на
+  // просмотр»: на медленной сети доска несколько секунд врала о правах.
+  const hint = access.isLoading ? (
+    "Проверяем ваш уровень доступа в проекте…"
+  ) : access.isFull ? (
     <>
       <span className="pointer-coarse:hidden">
         Перетащите карточку в другую колонку, чтобы сменить статус.
@@ -286,7 +286,10 @@ function BoardCard({
         {task.title}
       </Link>
 
-      {!task.isMilestone && column !== "planned" ? (
+      {/* В колонке «План» полоса прогресса — обычно ноль и лишний шум, но у
+          задачи, возвращённой из работы, прогресс остаётся, и прятать его
+          нельзя: карточка выглядела бы нетронутой. */}
+      {!task.isMilestone && (column !== "planned" || task.progressPercent > 0) ? (
         <Progress
           value={task.progressPercent}
           className="mt-2.5 h-1"
