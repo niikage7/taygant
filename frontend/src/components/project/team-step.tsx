@@ -5,7 +5,7 @@ import { UserPlus, X } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
-import type { ProjectRole, User } from "@/types";
+import type { AccessLevel, ProjectRole, User } from "@/types";
 
 const ROLE_OPTIONS: { value: ProjectRole; label: string }[] = [
   { value: "project_manager", label: "Руководитель проекта" },
@@ -15,7 +15,17 @@ const ROLE_OPTIONS: { value: ProjectRole; label: string }[] = [
   { value: "other", label: "Участник" },
 ];
 
-export type DraftMember = { userId: string; projectRole: ProjectRole };
+const ACCESS_OPTIONS: { value: AccessLevel; label: string; hint: string }[] = [
+  { value: "full", label: "Полный доступ", hint: "План, параметры проекта и команда" },
+  { value: "edit", label: "Редактирование", hint: "Статус и сроки своих задач" },
+  { value: "view", label: "Просмотр", hint: "Только чтение" },
+];
+
+export type DraftMember = {
+  userId: string;
+  projectRole: ProjectRole;
+  accessLevel: AccessLevel;
+};
 
 /**
  * Шаг 2 мастера: владелец проекта и приглашённые участники.
@@ -106,33 +116,64 @@ export function TeamStep({
                     <X className="size-4" />
                   </button>
                 </div>
-                <div className="mt-3 border-t border-line pt-2.5">
-                  <label
-                    htmlFor={`role-${member.userId}`}
-                    className="block text-[11px] font-semibold tracking-wider text-ink-faint uppercase"
-                  >
-                    Роль в проекте
-                  </label>
-                  <Select
-                    id={`role-${member.userId}`}
-                    value={member.projectRole}
-                    onChange={(event) =>
-                      onChange(
-                        members.map((item) =>
-                          item.userId === member.userId
-                            ? { ...item, projectRole: event.target.value as ProjectRole }
-                            : item,
-                        ),
-                      )
-                    }
-                    className="mt-1.5 h-8"
-                  >
-                    {ROLE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
+                <div className="mt-3 grid gap-2.5 border-t border-line pt-2.5 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor={`role-${member.userId}`}
+                      className="block text-[11px] font-semibold tracking-wider text-ink-faint uppercase"
+                    >
+                      Роль в проекте
+                    </label>
+                    <Select
+                      id={`role-${member.userId}`}
+                      value={member.projectRole}
+                      onChange={(event) =>
+                        onChange(
+                          members.map((item) =>
+                            item.userId === member.userId
+                              ? { ...item, projectRole: event.target.value as ProjectRole }
+                              : item,
+                          ),
+                        )
+                      }
+                      className="mt-1.5 h-8"
+                    >
+                      {ROLE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor={`access-${member.userId}`}
+                      className="block text-[11px] font-semibold tracking-wider text-ink-faint uppercase"
+                    >
+                      Уровень доступа
+                    </label>
+                    <Select
+                      id={`access-${member.userId}`}
+                      value={member.accessLevel}
+                      onChange={(event) =>
+                        onChange(
+                          members.map((item) =>
+                            item.userId === member.userId
+                              ? { ...item, accessLevel: event.target.value as AccessLevel }
+                              : item,
+                          ),
+                        )
+                      }
+                      className="mt-1.5 h-8"
+                    >
+                      {ACCESS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label} — {option.hint}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
                 </div>
               </li>
             );
@@ -157,7 +198,7 @@ export function TeamStep({
               if (!event.target.value) return;
               onChange([
                 ...members,
-                { userId: event.target.value, projectRole: "developer" },
+                { userId: event.target.value, projectRole: "developer", accessLevel: "edit" },
               ]);
             }}
             className="h-8 w-64"

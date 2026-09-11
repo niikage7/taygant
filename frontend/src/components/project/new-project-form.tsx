@@ -112,6 +112,7 @@ export function NewProjectForm({
       members: members.map((member) => ({
         userId: member.userId,
         projectRole: member.projectRole,
+        accessLevel: member.accessLevel,
       })),
     });
   };
