@@ -1,0 +1,31 @@
+# Пакеты, которые нужно скачать на Astra Linux SE 1.8 (Воронеж) заранее,
+# чтобы развернуть стек без доступа в интернет. Строки после # игнорируются.
+#
+# Скачивание:  astra/offline/export-apt-deps.sh
+# Установка:   astra/setup/install-rootless-docker.sh
+
+# ── Docker в rootless-режиме ──────────────────────────────────────────────
+docker-ce
+docker-ce-cli
+docker-ce-rootless-extras
+docker-compose-v2
+slirp4netns
+fuse-overlayfs
+uidmap
+dbus-user-session
+
+# ── Подпись файлов для ЗПС (bsign + gpg ГОСТ) ─────────────────────────────
+bsign
+binutils
+gnupg
+file
+attr
+
+# ── Утилиты, нужные скриптам и смоук-тесту ────────────────────────────────
+curl
+tar
+gzip
+xz-utils
+ca-certificates
+openssl
+iproute2

@@ -17,14 +17,22 @@
 *.out
 go.work
 go.work.sum
+out/images.tar.gz
 
 # Переменные окружения
 .env
 .env.local
 *.local
 
+# Astra Linux (ЗПС): конфиг развёртывания и оффлайн-артефакты.
+# Ключи подписи по умолчанию живут в ~/taygant/keys (вне репозитория).
+.env.astra
+/astra-offline/
+/astra/offline/out/
+
 # Редакторы / ОС
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+out~/images.tar.gz
