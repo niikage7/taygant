@@ -291,8 +291,21 @@ function TaskBar({
         style={{ top, left: left + offset, height: BAR_HEIGHT }}
         title={`${task.title} · ${format(parseISO(task.startDate), "dd.MM.yyyy")}`}
       >
-        <span className="size-3.5 rotate-45 rounded-[2px] bg-brand" />
-        <span className="text-2xs font-semibold whitespace-nowrap text-brand">{task.title}</span>
+        {/* Достигнутая веха зеленеет, как сданная контрольная точка проекта. */}
+        <span
+          className={cn(
+            "size-3.5 rotate-45 rounded-[2px]",
+            task.status === "done" ? "bg-success" : "bg-brand",
+          )}
+        />
+        <span
+          className={cn(
+            "text-2xs font-semibold whitespace-nowrap",
+            task.status === "done" ? "text-success-ink" : "text-brand",
+          )}
+        >
+          {task.title}
+        </span>
       </span>
     );
   }

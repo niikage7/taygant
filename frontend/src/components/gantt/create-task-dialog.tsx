@@ -234,7 +234,7 @@ export function CreateTaskDialog({
               </Dialog.Close>
               <Button type="submit" disabled={!canSubmit}>
                 <Plus />
-                {createTask.isPending ? "Создаём…" : "Создать задачу"}
+                {createTask.isPending ? "Создаём…" : isMilestone ? "Создать веху" : "Создать задачу"}
               </Button>
             </div>
           </form>

@@ -121,7 +121,16 @@ export function TaskTable({
 
           const { task, depth } = row;
           const critical = isAtRisk(task);
-          const status = TASK_STATUS_META[task.status];
+          // Задача-веха — событие нулевой длительности: у неё нет «плана» и
+          // «работы», есть только «ещё не достигнута» и «достигнута». Вычисленные
+          // сервером overdue/blocked показываем как есть — это сигнал о риске.
+          const isMilestoneTask = task.isMilestone;
+          const status =
+            isMilestoneTask && task.status === "done"
+              ? { label: "Достигнута", tone: "success" as const }
+              : isMilestoneTask && (task.status === "planned" || task.status === "in_progress")
+                ? { label: "Веха", tone: "brand" as const }
+                : TASK_STATUS_META[task.status];
           const predecessor = predecessorOf.get(task.id);
           const StatusIcon =
             task.status === "done"
@@ -136,6 +145,7 @@ export function TaskTable({
               className={cn(
                 "flex items-center border-b border-line px-3",
                 critical && "bg-danger-tint",
+                isMilestoneTask && !critical && "bg-brand-tint/40",
               )}
               style={{ height: ROW_HEIGHT }}
             >
@@ -158,6 +168,16 @@ export function TaskTable({
               >
                 {critical ? (
                   <Flag className="size-4 shrink-0 text-danger" />
+                ) : isMilestoneTask ? (
+                  // Тот же ромб, что на таймлайне и в легенде: строку реестра и
+                  // точку на графике глаз связывает по форме.
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "mx-[3px] size-2.5 shrink-0 rotate-45 rounded-[1px]",
+                      task.status === "done" ? "bg-success" : "bg-brand",
+                    )}
+                  />
                 ) : (
                   <StatusIcon
                     className={cn(
@@ -171,9 +191,14 @@ export function TaskTable({
                 <span
                   className={cn(
                     "truncate text-13",
-                    critical ? "font-semibold text-danger" : "text-ink",
+                    critical
+                      ? "font-semibold text-danger"
+                      : isMilestoneTask
+                        ? "font-semibold text-brand"
+                        : "text-ink",
                   )}
                 >
+                  {isMilestoneTask ? <span className="sr-only">Веха: </span> : null}
                   {task.title}
                 </span>
               </Link>
@@ -195,12 +220,18 @@ export function TaskTable({
                   critical ? "text-danger" : "text-ink-muted",
                 )}
               >
-                {formatDayMonth(task.startDate)} –<br />
-                {formatDayMonth(task.endDate)}
+                {isMilestoneTask ? (
+                  formatDayMonth(task.startDate)
+                ) : (
+                  <>
+                    {formatDayMonth(task.startDate)} –<br />
+                    {formatDayMonth(task.endDate)}
+                  </>
+                )}
               </span>
 
               <span className="w-10 shrink-0 text-right font-mono text-xs text-ink-muted">
-                {task.durationCalendarDays}
+                {isMilestoneTask ? "—" : task.durationCalendarDays}
               </span>
 
               <span className="w-24 shrink-0 pl-3">
@@ -209,7 +240,7 @@ export function TaskTable({
                     Крит. путь
                   </Badge>
                 ) : (
-                  <Badge tone={status.tone} size="sm" dot={task.status !== "planned"}>
+                  <Badge tone={status.tone} size="sm" dot={status.tone !== "brand"}>
                     {status.label}
                   </Badge>
                 )}

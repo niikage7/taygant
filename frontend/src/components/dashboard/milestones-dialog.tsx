@@ -57,8 +57,8 @@ export function MilestonesDialog({
                 Контрольные точки проекта
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-13 text-ink-muted">
-                Обязательства проекта по датам. Задачи к ним не привязываются — для
-                этого используйте спринты или задачу-веху со связями.
+                Обязательства проекта по датам. Привязанные задачи группируются под
+                контрольной точкой на Ганте, по ним считается её прогресс.
               </Dialog.Description>
             </div>
             <Dialog.Close
@@ -314,6 +314,7 @@ function MilestoneRow({
       </button>
 
       <LinkTasksDialog
+        projectId={milestone.projectId}
         milestoneId={milestone.id}
         milestoneName={milestone.name}
         candidates={projectTasks}

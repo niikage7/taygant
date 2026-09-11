@@ -7,9 +7,10 @@ import { useState, type ReactNode } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useAssignTasksToMilestone } from "@/data/queries";
+import { useAssignTasksToMilestone, useGantt } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
 import { plural } from "@/lib/format";
+import { predecessorsLeadingTo } from "@/lib/milestone-links";
 import type { Task } from "@/types";
 
 /**
@@ -18,13 +19,19 @@ import type { Task } from "@/types";
  * Отдельного эндпоинта нет, поэтому каждой задаче поле проставляется своим
  * PATCH. Ошибки собираются и показываются списком, а успешные привязки
  * остаются: откатывать их хуже, чем сообщить о частичном результате.
+ *
+ * Отметка задачи-вехи отмечает и работы, которые к ней ведут (прямых
+ * предшественников, см. `predecessorsLeadingTo`), — их видно в списке и можно
+ * снять. Снятие вехи снимает то, что было отмечено вместе с ней.
  */
 export function LinkTasksDialog({
+  projectId,
   milestoneId,
   milestoneName,
   candidates,
   trigger,
 }: {
+  projectId: string;
   /** Контрольная точка проекта, к которой привязываются работы. */
   milestoneId: string;
   milestoneName: string;
@@ -34,14 +41,52 @@ export function LinkTasksDialog({
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [failed, setFailed] = useState<string[]>([]);
+  // Что отмечено автоматически вместе с каждой задачей-вехой: id вехи → id работ.
+  const [autoAdded, setAutoAdded] = useState<Record<string, string[]>>({});
 
   const assignTasks = useAssignTasksToMilestone();
+  // Связи берём из того же кэша, что и экран Ганта: отдельного запроса не будет.
+  const dependencies = useGantt(projectId, "weeks").data?.dependencies ?? [];
   // Уже привязанные к этой вехе показываем отмеченными, чужие вехи не трогаем.
   // Задачи, уже привязанные к другой вехе, не показываем: перетаскивание между
   // вехами — отдельный сценарий, и молча переназначать чужую задачу неверно.
   const available = candidates.filter(
     (task) => !task.milestoneId || task.milestoneId === milestoneId,
   );
+
+  function toggle(task: Task, checked: boolean) {
+    if (checked) {
+      const extra = task.isMilestone
+        ? predecessorsLeadingTo(task, dependencies, candidates, milestoneId)
+            .toLink.map((item) => item.id)
+            .filter((id) => id !== task.id && !selected.includes(id))
+        : [];
+      setSelected([...selected, task.id, ...extra]);
+      if (task.isMilestone) setAutoAdded({ ...autoAdded, [task.id]: extra });
+      return;
+    }
+
+    // Снимаем веху — снимаем и то, что она отметила, если это же не отметила
+    // другая ещё выбранная веха.
+    const { [task.id]: ownExtra = [], ...rest } = autoAdded;
+    const keptByOthers = new Set(
+      Object.entries(rest)
+        .filter(([ownerId]) => selected.includes(ownerId))
+        .flatMap(([, ids]) => ids),
+    );
+    const removed = new Set([task.id, ...ownExtra.filter((id) => !keptByOthers.has(id))]);
+    setSelected(selected.filter((id) => !removed.has(id)));
+    setAutoAdded(rest);
+  }
+
+  // Для подписи «ведёт к вехе …» у автоматически отмеченной работы.
+  const ownerTitleOf = new Map<string, string>();
+  for (const [ownerId, ids] of Object.entries(autoAdded)) {
+    if (!selected.includes(ownerId)) continue;
+    const ownerTitle = candidates.find((task) => task.id === ownerId)?.title;
+    if (!ownerTitle) continue;
+    for (const id of ids) if (selected.includes(id)) ownerTitleOf.set(id, ownerTitle);
+  }
 
   function submit() {
     setFailed([]);
@@ -59,6 +104,7 @@ export function LinkTasksDialog({
             return;
           }
           setSelected([]);
+          setAutoAdded({});
           setOpen(false);
         },
       },
@@ -73,6 +119,7 @@ export function LinkTasksDialog({
         if (!next) {
           setSelected([]);
           setFailed([]);
+          setAutoAdded({});
         }
       }}
     >
@@ -88,7 +135,8 @@ export function LinkTasksDialog({
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-13 text-ink-muted">
                 Отметьте работы, которые ведут к вехе «{milestoneName}». Прогресс
-                считается по ним.
+                считается по ним. Вместе с задачей-вехой отметятся и работы,
+                которые к ней ведут по связям.
               </Dialog.Description>
             </div>
             <Dialog.Close
@@ -106,26 +154,75 @@ export function LinkTasksDialog({
           ) : (
             <div className="mt-5 space-y-4">
               <ul className="max-h-64 space-y-1 overflow-y-auto rounded-control border border-line p-2">
-                {available.map((task) => (
-                  <li key={task.id}>
-                    <label className="flex cursor-pointer items-center gap-2.5 rounded-control px-2 py-1.5 hover:bg-surface-muted">
-                      <Checkbox
-                        checked={selected.includes(task.id)}
-                        onCheckedChange={(next) =>
-                          setSelected((current) =>
-                            next === true
-                              ? [...current, task.id]
-                              : current.filter((id) => id !== task.id),
-                          )
-                        }
-                      />
-                      <span className="min-w-0 flex-1 truncate text-13 text-ink">
-                        <span className="font-mono text-ink-faint">#{task.wbsNumber}</span>{" "}
-                        {task.title}
-                      </span>
-                    </label>
-                  </li>
-                ))}
+                {available.map((task) => {
+                  const checked = selected.includes(task.id);
+                  const ownerTitle = ownerTitleOf.get(task.id);
+                  const leading = task.isMilestone
+                    ? predecessorsLeadingTo(task, dependencies, candidates, milestoneId)
+                    : null;
+                  const addedCount = autoAdded[task.id]?.length ?? 0;
+                  // Номера, а не только число: отмеченные работы могут быть за
+                  // пределами видимой части прокручиваемого списка.
+                  const numbersOf = (ids: string[]) =>
+                    ids
+                      .map((id) => `#${candidates.find((item) => item.id === id)?.wbsNumber ?? "?"}`)
+                      .join(", ");
+                  const otherCount = leading?.inOtherMilestones.length ?? 0;
+
+                  return (
+                    <li key={task.id}>
+                      <label className="flex cursor-pointer items-start gap-2.5 rounded-control px-2 py-1.5 hover:bg-surface-muted">
+                        <Checkbox
+                          className="mt-0.5"
+                          checked={checked}
+                          onCheckedChange={(next) => toggle(task, next === true)}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={
+                              task.isMilestone
+                                ? "flex items-center gap-1.5 text-13 font-semibold text-brand"
+                                : "block truncate text-13 text-ink"
+                            }
+                          >
+                            {task.isMilestone ? (
+                              <span
+                                aria-hidden
+                                className="size-2 shrink-0 rotate-45 rounded-[1px] bg-brand"
+                              />
+                            ) : null}
+                            <span className="truncate">
+                              <span className="font-mono font-normal text-ink-faint">
+                                #{task.wbsNumber}
+                              </span>{" "}
+                              {task.isMilestone ? <span className="sr-only">Веха: </span> : null}
+                              {task.title}
+                            </span>
+                          </span>
+                          {ownerTitle ? (
+                            <span className="block text-2xs text-ink-faint">
+                              ведёт к вехе «{ownerTitle}»
+                            </span>
+                          ) : null}
+                          {checked && leading ? (
+                            <span className="block text-2xs text-ink-faint">
+                              {addedCount === 1
+                                ? `Вместе с вехой отмечена ведущая к ней работа ${numbersOf(autoAdded[task.id])}`
+                                : addedCount > 1
+                                  ? `Вместе с вехой отмечены ведущие к ней работы ${numbersOf(autoAdded[task.id])}`
+                                  : "Новых работ, ведущих к вехе, нет"}
+                              {otherCount === 1
+                                ? ` · работа ${numbersOf(leading.inOtherMilestones.map((item) => item.id))} уже в другой КТ — не тронута`
+                                : otherCount > 1
+                                  ? ` · работы ${numbersOf(leading.inOtherMilestones.map((item) => item.id))} уже в других КТ — не тронуты`
+                                  : ""}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
               </ul>
 
               <div className="flex items-center justify-end gap-3">
