@@ -61,7 +61,12 @@ export function TaskParams({
 
   // Сервер — источник истины: после сохранения приходит обновлённая задача,
   // и локальные поля надо подтянуть, иначе они «залипнут» на старых значениях.
-  useEffect(() => {
+  // Сравнение и setState — прямо в рендере (а не в useEffect): React специально
+  // поддерживает этот паттерн для синхронизации состояния с изменившимся пропом,
+  // без лишнего промежуточного рендера со старыми значениями.
+  const [prevTask, setPrevTask] = useState(task);
+  if (task !== prevTask) {
+    setPrevTask(task);
     setProgress(task.progressPercent);
     setStatus(task.status);
     setStartDate(task.startDate);
@@ -69,7 +74,7 @@ export function TaskParams({
     setDescription(task.description ?? "");
     setTitle(task.title);
     setAssigneeId(task.assignee?.id ?? "");
-  }, [task]);
+  }
 
   useEffect(() => {
     if (!canEdit) {
