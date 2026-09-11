@@ -44,6 +44,8 @@ export function Timeline({
   highlightCriticalPath,
   canMoveTask,
   onTaskMove,
+  scrollRef,
+  frozenWidth,
 }: {
   /** Те же строки, что и в реестре: заголовки вех тоже занимают строку. */
   rows: GanttRow[];
@@ -60,8 +62,11 @@ export function Timeline({
   canMoveTask: (task: Task) => boolean;
   /** Перенос задачи на delta календарных дней (сохранением длительности). */
   onTaskMove: (task: Task, deltaDays: number) => void;
+  /** Общий на пару «реестр + таймлайн» контейнер прокрутки (см. GanttBoard). */
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  /** Ширина примороженного слева реестра — её не видно под графиком. */
+  frozenWidth: number;
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
   const range = buildRange(startDate, endDate, scale);
   const months = monthColumns(range);
   const subs = subColumns(range, scale);
@@ -77,137 +82,142 @@ export function Timeline({
 
   // При открытии показываем окрестность сегодняшнего дня, а не начало графика:
   // проект длится месяцы, и без этого пользователь каждый раз мотал бы вручную.
+  // Реестр приморожен слева и перекрывает начало графика, поэтому целимся в
+  // треть именно видимой части таймлайна, а не всего контейнера.
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
-    container.scrollLeft = Math.max(0, todayLeft - container.clientWidth / 3);
-  }, [todayLeft, scale]);
+    const visibleWidth = Math.max(0, container.clientWidth - frozenWidth);
+    container.scrollLeft = Math.max(0, todayLeft - visibleWidth / 3);
+  }, [scrollRef, frozenWidth, todayLeft, scale]);
 
   return (
-    <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto">
-      <div style={{ width: range.width }}>
-        <div
-          className="sticky top-0 z-10 border-b border-line bg-surface"
-          style={{ height: HEADER_HEIGHT }}
-        >
-          <div className="relative h-6 border-b border-line">
-            {months.map((month) => (
-              <span
-                key={month.key}
-                className="absolute top-0 flex h-6 items-center overflow-hidden px-2 text-2xs font-bold tracking-wide whitespace-nowrap text-brand uppercase"
-                style={{ left: month.left, width: month.width }}
-              >
-                {month.width >= MONTH_FULL_LABEL_MIN_WIDTH
-                  ? month.label
-                  : month.width >= MONTH_SHORT_LABEL_MIN_WIDTH
-                    ? month.shortLabel
-                    : ""}
-              </span>
-            ))}
-          </div>
-          <div className="relative h-6">
-            {subs.map((sub) => (
-              <span
-                key={sub.key}
-                className="absolute top-0 flex h-6 items-center justify-center border-l border-line text-3xs text-ink-faint"
-                style={{ left: sub.left, width: sub.width }}
-              >
-                {sub.label}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="relative" style={{ height: bodyHeight }}>
-          {weekends.map((band) => (
+    // Своей прокрутки у таймлайна нет: он часть общего скролл-контейнера, иначе
+    // шапка календаря не примораживается, а горизонтальный ползунок уезжает
+    // под последнюю строку — до него приходилось домотать весь список задач.
+    // flex-1 добирает пустое место, когда график уже контейнера.
+    <div className="relative" style={{ flex: `1 0 ${range.width}px` }}>
+      <div
+        className="sticky top-0 z-10 border-b border-line bg-surface"
+        style={{ height: HEADER_HEIGHT }}
+      >
+        <div className="relative h-6 border-b border-line">
+          {months.map((month) => (
             <span
-              key={band.key}
-              className="absolute top-0 bg-surface-subtle"
-              style={{ left: band.left, width: band.width, height: bodyHeight }}
-            />
+              key={month.key}
+              className="absolute top-0 flex h-6 items-center overflow-hidden px-2 text-2xs font-bold tracking-wide whitespace-nowrap text-brand uppercase"
+              style={{ left: month.left, width: month.width }}
+            >
+              {month.width >= MONTH_FULL_LABEL_MIN_WIDTH
+                ? month.label
+                : month.width >= MONTH_SHORT_LABEL_MIN_WIDTH
+                  ? month.shortLabel
+                  : ""}
+            </span>
           ))}
-
+        </div>
+        <div className="relative h-6">
           {subs.map((sub) => (
             <span
               key={sub.key}
-              className="absolute top-0 border-l border-line/70"
-              style={{ left: sub.left, height: bodyHeight }}
-            />
+              className="absolute top-0 flex h-6 items-center justify-center border-l border-line text-3xs text-ink-faint"
+              style={{ left: sub.left, width: sub.width }}
+            >
+              {sub.label}
+            </span>
           ))}
-
-          {rows.map((row, index) => (
-            <span
-              key={index}
-              className={cn(
-                "absolute left-0 w-full border-b border-line",
-                row.kind === "milestone" && "bg-accent-tint/40",
-              )}
-              style={{
-                top: row.kind === "milestone" ? index * ROW_HEIGHT : (index + 1) * ROW_HEIGHT - 1,
-                height: row.kind === "milestone" ? ROW_HEIGHT : undefined,
-              }}
-            />
-          ))}
-
-          <DependencyArrows
-            tasks={taskRows.map(({ task }) => task)}
-            dependencies={dependencies}
-            rowIndex={rowIndex}
-            range={range}
-            bodyHeight={bodyHeight}
-            highlightCriticalPath={highlightCriticalPath}
-          />
-
-          {taskRows.map(({ task, index }) => (
-            <TaskBar
-              key={task.id}
-              task={task}
-              top={index * ROW_HEIGHT + (ROW_HEIGHT - BAR_HEIGHT) / 2}
-              left={offsetPx(range, task.startDate)}
-              width={spanPx(range, task.startDate, task.endDate)}
-              pxPerDay={range.pxPerDay}
-              today={today}
-              highlightCriticalPath={highlightCriticalPath}
-              movable={canMoveTask(task)}
-              onMove={(deltaDays) => onTaskMove(task, deltaDays)}
-            />
-          ))}
-
-          {milestones.map((milestone) => {
-            const left = offsetPx(range, milestone.plannedDate) + range.pxPerDay / 2;
-            if (left < 0 || left > range.width) return null;
-            const done = milestone.status === "done";
-            return (
-              <span
-                key={milestone.id}
-                className="absolute top-0 flex flex-col items-center"
-                style={{ left, height: bodyHeight }}
-                title={`${milestone.code ? `${milestone.code} · ` : ""}${milestone.name} · ${format(parseISO(milestone.plannedDate), "dd.MM.yyyy")}`}
-              >
-                <span
-                  className={cn(
-                    "h-full w-px border-l border-dashed",
-                    done ? "border-success" : "border-accent",
-                  )}
-                />
-                <span
-                  className={cn(
-                    "absolute -top-1 size-2.5 rotate-45 rounded-[1px]",
-                    done ? "bg-success" : "bg-accent",
-                  )}
-                />
-              </span>
-            );
-          })}
-
-          {differenceInCalendarDays(parseISO(today), range.start) >= 0 ? (
-            <span
-              className="absolute top-0 w-px bg-brand"
-              style={{ left: todayLeft, height: bodyHeight }}
-              aria-hidden
-            />
-          ) : null}
         </div>
+      </div>
+
+      <div className="relative" style={{ height: bodyHeight }}>
+        {weekends.map((band) => (
+          <span
+            key={band.key}
+            className="absolute top-0 bg-surface-subtle"
+            style={{ left: band.left, width: band.width, height: bodyHeight }}
+          />
+        ))}
+
+        {subs.map((sub) => (
+          <span
+            key={sub.key}
+            className="absolute top-0 border-l border-line/70"
+            style={{ left: sub.left, height: bodyHeight }}
+          />
+        ))}
+
+        {rows.map((row, index) => (
+          <span
+            key={index}
+            className={cn(
+              "absolute left-0 w-full border-b border-line",
+              row.kind === "milestone" && "bg-accent-tint/40",
+            )}
+            style={{
+              top: row.kind === "milestone" ? index * ROW_HEIGHT : (index + 1) * ROW_HEIGHT - 1,
+              height: row.kind === "milestone" ? ROW_HEIGHT : undefined,
+            }}
+          />
+        ))}
+
+        <DependencyArrows
+          tasks={taskRows.map(({ task }) => task)}
+          dependencies={dependencies}
+          rowIndex={rowIndex}
+          range={range}
+          bodyHeight={bodyHeight}
+          highlightCriticalPath={highlightCriticalPath}
+        />
+
+        {taskRows.map(({ task, index }) => (
+          <TaskBar
+            key={task.id}
+            task={task}
+            top={index * ROW_HEIGHT + (ROW_HEIGHT - BAR_HEIGHT) / 2}
+            left={offsetPx(range, task.startDate)}
+            width={spanPx(range, task.startDate, task.endDate)}
+            pxPerDay={range.pxPerDay}
+            today={today}
+            highlightCriticalPath={highlightCriticalPath}
+            movable={canMoveTask(task)}
+            onMove={(deltaDays) => onTaskMove(task, deltaDays)}
+          />
+        ))}
+
+        {milestones.map((milestone) => {
+          const left = offsetPx(range, milestone.plannedDate) + range.pxPerDay / 2;
+          if (left < 0 || left > range.width) return null;
+          const done = milestone.status === "done";
+          return (
+            <span
+              key={milestone.id}
+              className="absolute top-0 flex flex-col items-center"
+              style={{ left, height: bodyHeight }}
+              title={`${milestone.code ? `${milestone.code} · ` : ""}${milestone.name} · ${format(parseISO(milestone.plannedDate), "dd.MM.yyyy")}`}
+            >
+              <span
+                className={cn(
+                  "h-full w-px border-l border-dashed",
+                  done ? "border-success" : "border-accent",
+                )}
+              />
+              <span
+                className={cn(
+                  "absolute -top-1 size-2.5 rotate-45 rounded-[1px]",
+                  done ? "bg-success" : "bg-accent",
+                )}
+              />
+            </span>
+          );
+        })}
+
+        {differenceInCalendarDays(parseISO(today), range.start) >= 0 ? (
+          <span
+            className="absolute top-0 w-px bg-brand"
+            style={{ left: todayLeft, height: bodyHeight }}
+            aria-hidden
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -282,9 +292,7 @@ function TaskBar({
         title={`${task.title} · ${format(parseISO(task.startDate), "dd.MM.yyyy")}`}
       >
         <span className="size-3.5 rotate-45 rounded-[2px] bg-brand" />
-        <span className="text-2xs font-semibold whitespace-nowrap text-brand">
-          {task.title}
-        </span>
+        <span className="text-2xs font-semibold whitespace-nowrap text-brand">{task.title}</span>
       </span>
     );
   }
@@ -352,8 +360,7 @@ function DependencyArrows({
         const toRow = rowIndex.get(dependency.successorTaskId);
         if (!from || !to || fromRow === undefined || toRow === undefined) return null;
 
-        const x1 =
-          offsetPx(range, from.startDate) + spanPx(range, from.startDate, from.endDate);
+        const x1 = offsetPx(range, from.startDate) + spanPx(range, from.startDate, from.endDate);
         const y1 = fromRow * ROW_HEIGHT + ROW_HEIGHT / 2;
         const x2 = offsetPx(range, to.startDate);
         const y2 = toRow * ROW_HEIGHT + ROW_HEIGHT / 2;
