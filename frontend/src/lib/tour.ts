@@ -54,6 +54,51 @@ export const TOUR_STEPS: TourStep[] = [
   },
 ];
 
+export type TourRect = { top: number; left: number; width: number; height: number };
+
+/**
+ * Куда поставить карточку тура относительно подсвеченной цели (координаты
+ * вьюпорта). Пробуем снизу, сверху, справа, слева (высокой цели — сначала
+ * сбоку) — первое место, где карточка
+ * целиком влезает в экран. Цель бывает высокой (навигация сайдбара тянется
+ * почти на весь экран) или широкой (блок Ганта), и «снизу или сверху» не
+ * хватает: карточка уезжала за верхний край. Если не влез ни один вариант,
+ * прижимаем карточку к нижнему краю экрана поверх цели — лучше перекрыть часть
+ * цели, чем спрятать кнопки тура.
+ */
+export function placeTourCard(
+  target: TourRect,
+  card: { width: number; height: number },
+  viewport: { width: number; height: number },
+  gap: number,
+): { top: number; left: number } {
+  const clamp = (value: number, min: number, max: number) =>
+    Math.min(Math.max(value, min), Math.max(max, min));
+  const horizontal = clamp(target.left, gap, viewport.width - card.width - gap);
+  const vertical = clamp(target.top, gap, viewport.height - card.height - gap);
+
+  const below = { top: target.top + target.height + gap, left: horizontal };
+  const above = { top: target.top - gap - card.height, left: horizontal };
+  const right = { top: vertical, left: target.left + target.width + gap };
+  const left = { top: vertical, left: target.left - gap - card.width };
+  // У высокой узкой цели (сайдбар) карточка сбоку читается как подпись к ней,
+  // а снизу оказалась бы у края экрана, далеко от начала блока.
+  const candidates =
+    target.height > target.width ? [right, left, below, above] : [below, above, right, left];
+  const fits = ({ top, left }: { top: number; left: number }) =>
+    top >= gap &&
+    left >= gap &&
+    top + card.height <= viewport.height - gap &&
+    left + card.width <= viewport.width - gap;
+
+  return (
+    candidates.find(fits) ?? {
+      top: Math.max(gap, viewport.height - card.height - gap),
+      left: horizontal,
+    }
+  );
+}
+
 const STORAGE_KEY = "taygant.tourCompleted";
 
 /** Тур показывается один раз; отметка живёт в браузере пользователя. */
