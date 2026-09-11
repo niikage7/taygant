@@ -196,18 +196,40 @@ export function useAssignTasksToMilestone() {
  * Отдельный хук, а не useUpdateTask: перетаскивание идёт под курсором и должно
  * одним invalidate обновить весь экран Ганта, а не только карточку задачи.
  */
+/**
+ * Перенос задачи мышью по таймлайну Ганта.
+ *
+ * `cascade` — это `POST /tasks/{id}/apply-shift`: сервер двигает не только саму
+ * задачу, но и всю цепочку последователей по CPM и возвращает, что сместилось и
+ * как это сказалось на дедлайне проекта. Обычный PATCH дат такого не делает —
+ * после него последователь остаётся начинаться раньше конца предшественника, и
+ * план молча становится невыполнимым.
+ *
+ * Каскад требует полного доступа (`requireManageByTask` на бэкенде): участник
+ * уровня edit двигает цепочку не вправе, ему остаётся PATCH своих дат — иначе
+ * перетаскивание отвечало бы ему 403 вместо переноса.
+ */
 export function useMoveTask() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
       taskId,
+      shiftDays,
       startDate,
       endDate,
+      cascade,
     }: {
       taskId: string;
+      shiftDays: number;
       startDate: string;
       endDate: string;
-    }) => tasksService.update(taskId, { startDate, endDate }),
+      cascade: boolean;
+    }): Promise<ShiftSimulation | Task> =>
+      cascade
+        ? simulationService.applyShift(taskId, { shiftDays })
+        : tasksService.update(taskId, { startDate, endDate }),
+    // Сдвиг цепочки меняет даты чужих задач, критический путь и метрики обзора,
+    // поэтому обновляем все данные проекта, а не одну задачу.
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });
 }
@@ -327,8 +349,7 @@ export function useRevokeMcpToken() {
 /** Инвалидируем список команды: от него зависит уровень доступа на всех экранах. */
 function useMemberInvalidation(projectId: string | undefined) {
   const queryClient = useQueryClient();
-  return () =>
-    queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId ?? "") });
+  return () => queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId ?? "") });
 }
 
 export function useAddMember(projectId: string | undefined) {

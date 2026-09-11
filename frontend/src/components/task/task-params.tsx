@@ -19,7 +19,7 @@ import {
 } from "@/data/queries";
 import { useProjectAccess } from "@/data/project-access";
 import { formatSigned } from "@/lib/format";
-import { TASK_STATUS_META } from "@/lib/task-status";
+import { ASSIGNABLE_TASK_STATUSES, TASK_STATUS_META, isAssignableStatus } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
 import type { Project, TaskDetail, TaskStatus, TaskUpdateRequest } from "@/types";
 
@@ -217,10 +217,16 @@ export function TaskParams({
             onChange={(event) => setStatus(event.target.value as TaskStatus)}
             className="mt-2"
           >
-            {(restricted
-              ? (["planned", "in_progress", "done"] as TaskStatus[])
-              : (["planned", "in_progress", "done", "overdue", "blocked"] as TaskStatus[])
-            ).map((value) => (
+            {/* Текущий статус может быть вычисленным (overdue/blocked). Его
+                нельзя выбрать, но и выкинуть из списка нельзя: без своего
+                значения select показал бы первый вариант, и просроченная задача
+                молча читалась бы как «План», а сохранение сбросило бы статус. */}
+            {!isAssignableStatus(status) ? (
+              <option value={status} disabled>
+                {TASK_STATUS_META[status].label} (определяется системой)
+              </option>
+            ) : null}
+            {ASSIGNABLE_TASK_STATUSES.map((value) => (
               <option key={value} value={value}>
                 {TASK_STATUS_META[value].label}
               </option>

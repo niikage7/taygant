@@ -1,16 +1,10 @@
 "use client";
 
-import {
-  ChevronDown,
-  ChevronRight,
-  Circle,
-  CircleCheck,
-  CircleDot,
-  Flag,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Circle, CircleCheck, CircleDot, Flag } from "lucide-react";
 import Link from "next/link";
 
 import { ROW_HEIGHT } from "@/components/gantt/timeline";
+import { TASK_TABLE_WIDTH } from "@/lib/gantt";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { formatDayMonth } from "@/lib/format";
@@ -44,13 +38,17 @@ export function TaskTable({
   const isAtRisk = (task: Task) =>
     highlightCriticalPath && task.isCriticalPath && task.planVsActualDeviationDays < 0;
 
-  const predecessorOf = new Map(
-    dependencies.map((d) => [d.successorTaskId, d.predecessorTaskId]),
-  );
+  const predecessorOf = new Map(dependencies.map((d) => [d.successorTaskId, d.predecessorTaskId]));
   const wbsOf = new Map(allTasks.map((task) => [task.id, task.wbsNumber]));
 
   return (
-    <div className="w-[600px] shrink-0 border-r border-line">
+    // Реестр приморожен слева: при горизонтальной прокрутке таймлайна названия
+    // задач остаются на месте, иначе по широкому графику непонятно, чей отрезок
+    // сейчас видно. Непрозрачный фон обязателен — под ним проезжает таймлайн.
+    <div
+      className="sticky left-0 z-20 shrink-0 border-r border-line bg-surface"
+      style={{ width: TASK_TABLE_WIDTH }}
+    >
       <div className="sticky top-0 z-10 flex h-12 items-end border-b border-line bg-surface px-3 pb-2 text-2xs tracking-wider text-ink-faint uppercase">
         <span className="w-8 shrink-0 font-semibold">#</span>
         <span className="min-w-0 flex-1 truncate font-semibold">Наименование задачи</span>
@@ -105,7 +103,10 @@ export function TaskTable({
                   {milestone.name}
                 </span>
 
-                <Badge tone={complete ? "success" : childCount > 0 ? "accent" : "neutral"} size="sm">
+                <Badge
+                  tone={complete ? "success" : childCount > 0 ? "accent" : "neutral"}
+                  size="sm"
+                >
                   {milestone.tasksTotal > 0
                     ? `${milestone.tasksDone} / ${milestone.tasksTotal}`
                     : "нет задач"}
@@ -129,7 +130,6 @@ export function TaskTable({
                 ? CircleDot
                 : Circle;
 
-
           return (
             <li
               key={task.id}
@@ -141,10 +141,7 @@ export function TaskTable({
             >
               {/* Вложенность показываем отступом: задача читается как часть вехи. */}
               {depth > 0 ? (
-                <span
-                  aria-hidden
-                  className="mr-1 h-full w-4 shrink-0 border-l border-accent/40"
-                />
+                <span aria-hidden className="mr-1 h-full w-4 shrink-0 border-l border-accent/40" />
               ) : null}
               <span
                 className={cn(
@@ -208,7 +205,9 @@ export function TaskTable({
 
               <span className="w-24 shrink-0 pl-3">
                 {critical ? (
-                  <Badge tone="danger" size="sm" dot>Крит. путь</Badge>
+                  <Badge tone="danger" size="sm" dot>
+                    Крит. путь
+                  </Badge>
                 ) : (
                   <Badge tone={status.tone} size="sm" dot={task.status !== "planned"}>
                     {status.label}

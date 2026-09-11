@@ -2,7 +2,7 @@
 
 import { addDays, format, parseISO } from "date-fns";
 import { CircleAlert, Plus, TriangleAlert, User, Waypoints, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { CreateTaskDialog } from "@/components/gantt/create-task-dialog";
 import { buildGanttRows } from "@/lib/gantt-rows";
@@ -11,9 +11,10 @@ import { Timeline } from "@/components/gantt/timeline";
 import { Segmented } from "@/components/ui/segmented";
 import { useProjectAccess } from "@/data/project-access";
 import { useMoveTask } from "@/data/queries";
+import { toUserMessage } from "@/lib/api-error-message";
 import { cn } from "@/lib/utils";
-import type { TimeScale } from "@/lib/gantt";
-import type { Milestone, Project, Task, TaskDependency } from "@/types";
+import { TASK_TABLE_WIDTH, type TimeScale } from "@/lib/gantt";
+import type { Milestone, Project, ShiftSimulation, Task, TaskDependency } from "@/types";
 
 const SCALES = [
   { value: "days", label: "Дни" },
@@ -47,6 +48,9 @@ export function GanttBoard({
   const [filters, setFilters] = useState<Filter[]>([]);
   const [alertVisible, setAlertVisible] = useState(true);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // Прокрутка — общая для реестра и таймлайна: это один контейнер, скроллящийся
+  // в обе стороны. Ссылка нужна таймлайну, чтобы подкрутить график к сегодня.
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const toggleCollapse = (milestoneId: string) =>
     setCollapsed((current) => {
@@ -58,6 +62,9 @@ export function GanttBoard({
 
   const access = useProjectAccess();
   const moveTask = useMoveTask();
+  // Итог последнего каскадного переноса: сдвиг чужих задач нельзя проводить
+  // молча — пользователь должен видеть, что тронул не только свою полосу.
+  const [shift, setShift] = useState<{ task: Task; result: ShiftSimulation } | null>(null);
 
   const toggleFilter = (filter: Filter) =>
     setFilters((current) =>
@@ -66,13 +73,31 @@ export function GanttBoard({
 
   // Перенос задачи целиком сдвигает сроки на delta дней, сохраняя длительность.
   // Веха нулевой длительности — точка, поэтому её начало и конец совпадают.
+  //
+  // При полном доступе перенос идёт через apply-shift: сервер пересчитывает по
+  // CPM всю цепочку последователей. Обычный PATCH дат сдвинул бы одну задачу и
+  // оставил её последователя начинаться раньше её конца — молча сломанный план.
   const handleTaskMove = (task: Task, deltaDays: number) => {
     if (deltaDays === 0) return;
     const startDate = format(addDays(parseISO(task.startDate), deltaDays), "yyyy-MM-dd");
     const endDate = task.isMilestone
       ? startDate
       : format(addDays(parseISO(task.endDate), deltaDays), "yyyy-MM-dd");
-    moveTask.mutate({ taskId: task.id, startDate, endDate });
+    setShift(null);
+    moveTask.mutate(
+      {
+        taskId: task.id,
+        shiftDays: deltaDays,
+        startDate,
+        endDate,
+        cascade: access.isFull,
+      },
+      {
+        onSuccess: (result) => {
+          if (result && "affectedTasks" in result) setShift({ task, result });
+        },
+      },
+    );
   };
 
   const visibleTasks = tasks.filter((task) => {
@@ -149,8 +174,32 @@ export function GanttBoard({
         </div>
       ) : null}
 
+      {moveTask.error ? (
+        <div className="flex items-center gap-3 rounded-control bg-danger-tint px-3 py-2.5 text-[13px] text-danger">
+          <TriangleAlert className="size-4 shrink-0" />
+          <p className="min-w-0 flex-1">
+            {toUserMessage(moveTask.error, {}, "Не удалось перенести задачу")}
+          </p>
+          <button
+            type="button"
+            onClick={() => moveTask.reset()}
+            aria-label="Скрыть сообщение"
+            className="shrink-0 rounded-control text-ink-faint hover:text-ink focus-visible:focus-ring"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      ) : null}
+
+      {shift ? (
+        <ShiftSummary task={shift.task} result={shift.result} onClose={() => setShift(null)} />
+      ) : null}
+
       <div className="overflow-hidden rounded-card bg-surface shadow-card" data-tour="gantt">
-        <div className="flex max-h-[540px] overflow-y-auto">
+        <div
+          ref={scrollRef}
+          className="flex max-h-[calc(100dvh-20rem)] min-h-[18rem] overflow-auto"
+        >
           <TaskTable
             rows={rows}
             allTasks={tasks}
@@ -170,9 +219,10 @@ export function GanttBoard({
             highlightCriticalPath={project.highlightCriticalPath}
             canMoveTask={access.canEditTask}
             onTaskMove={handleTaskMove}
+            scrollRef={scrollRef}
+            frozenWidth={TASK_TABLE_WIDTH}
           />
         </div>
-
         {access.isFull ? (
           <CreateTaskDialog
             projectId={project.id}
@@ -186,7 +236,8 @@ export function GanttBoard({
               </button>
             }
           />
-        ) : null}      </div>
+        ) : null}{" "}
+      </div>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-ink-faint">
         <span className="font-semibold tracking-wider uppercase">Легенда связей:</span>
@@ -200,8 +251,7 @@ export function GanttBoard({
           <span className="size-2.5 rotate-45 rounded-[1px] bg-brand" /> Задача-веха
         </span>
         <span className="flex items-center gap-1.5 text-accent">
-          <span className="size-2.5 rotate-45 rounded-[1px] bg-accent" /> Контрольная точка
-          проекта
+          <span className="size-2.5 rotate-45 rounded-[1px] bg-accent" /> Контрольная точка проекта
         </span>
       </div>
     </div>
@@ -239,5 +289,57 @@ function FilterChip({
       {icon}
       {label}
     </button>
+  );
+}
+
+/**
+ * Что именно сделал каскадный перенос: сколько задач сдвинулось следом и как
+ * это сказалось на дедлайне проекта. Без этого apply-shift меняет чужие сроки
+ * незаметно для того, кто просто подвинул полосу мышью.
+ */
+function ShiftSummary({
+  task,
+  result,
+  onClose,
+}: {
+  task: Task;
+  result: ShiftSimulation;
+  onClose: () => void;
+}) {
+  const affected = result.affectedTasks.length;
+  const deadlineDelta = result.projectDeadlineImpact.deltaDays;
+  const tone = deadlineDelta > 0 ? "danger" : "brand";
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-control px-3 py-2.5 text-[13px]",
+        tone === "danger" ? "bg-danger-tint text-danger" : "bg-brand-tint text-brand",
+      )}
+    >
+      {tone === "danger" ? (
+        <TriangleAlert className="size-4 shrink-0" />
+      ) : (
+        <Waypoints className="size-4 shrink-0" />
+      )}
+      <p className="min-w-0 flex-1">
+        <span className="font-semibold">«{task.title}»</span> перенесена на{" "}
+        {result.shiftDays > 0 ? `+${result.shiftDays}` : result.shiftDays} дн.
+        {affected > 0
+          ? ` Каскадно сдвинуто зависимых задач: ${affected}.`
+          : " Зависимые задачи не затронуты."}
+        {deadlineDelta !== 0
+          ? ` Дедлайн проекта сместился на ${deadlineDelta > 0 ? "+" : ""}${deadlineDelta} дн.`
+          : ` Дедлайн проекта не изменился (резерв: ${result.bufferAvailableDays} дн.).`}
+      </p>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Скрыть сводку переноса"
+        className="shrink-0 rounded-control opacity-70 transition-opacity hover:opacity-100 focus-visible:focus-ring"
+      >
+        <X className="size-4" />
+      </button>
+    </div>
   );
 }
