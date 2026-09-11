@@ -287,6 +287,26 @@ export function useMoveTask() {
   });
 }
 
+/**
+ * Возврат задачам их прежних дат — отмена переноса полосы вместе с каскадом.
+ *
+ * Обратный apply-shift для этого не годится: CPM толкает последователей только
+ * вперёд, и при сдвиге назад они остались бы на новых датах.
+ */
+export function useRestoreTaskDates() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dates: { taskId: string; startDate: string; endDate: string }[]) =>
+      Promise.all(
+        dates.map(({ taskId, startDate, endDate }) =>
+          tasksService.update(taskId, { startDate, endDate }),
+        ),
+      ),
+    // Перечитываем и после ошибки: часть задач могла уже вернуться на место.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
 export function useAddComment(taskId: string) {
   const queryClient = useQueryClient();
   return useMutation({

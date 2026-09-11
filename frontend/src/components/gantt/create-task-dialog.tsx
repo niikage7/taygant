@@ -18,11 +18,14 @@ import {
   useGantt,
   useLinkPredecessors,
   useMilestones,
+  useProject,
   useProjectMembers,
   useTasks,
 } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
+import { formatDate } from "@/lib/format";
 import { successorsReachableFrom } from "@/lib/milestone-links";
+import { addWorkdays, workdaysAfter } from "@/lib/working-calendar";
 import { cn } from "@/lib/utils";
 
 const toIso = (date: Date) => format(date, "yyyy-MM-dd");
@@ -67,6 +70,15 @@ export function CreateTaskDialog({
   const projectTasks = useTasks(projectId).data ?? [];
   const dependencies = useGantt(projectId, "weeks").data?.dependencies ?? [];
   const linkPredecessors = useLinkPredecessors();
+  // Календарь проекта: задача после предшественника начинается в рабочий день.
+  const calendar = useProject(projectId).data?.workingCalendarType ?? "5/2";
+
+  const selectedPredecessor = isMilestone
+    ? undefined
+    : projectTasks.find((task) => task.id === predecessorId);
+  const earliestStart = selectedPredecessor
+    ? addWorkdays(calendar, selectedPredecessor.endDate, 1)
+    : null;
 
   // Веха M недопустима, если выбранный предшественник P уже стоит после неё:
   // M → … → P → новая задача → M замкнуло бы цикл, и второй запрос упал бы уже
@@ -99,6 +111,15 @@ export function CreateTaskDialog({
 
   function changePredecessor(nextId: string) {
     setPredecessorId(nextId);
+    // Связь FS: начало — следующий рабочий день после окончания предшественника,
+    // длительность в рабочих днях сохраняется. С датами по умолчанию («сегодня»)
+    // задача встала бы раньше, чем тот закончится.
+    const predecessor = projectTasks.find((task) => task.id === nextId);
+    if (predecessor) {
+      const nextStart = addWorkdays(calendar, predecessor.endDate, 1);
+      setEndDate(addWorkdays(calendar, nextStart, workdaysAfter(calendar, startDate, endDate)));
+      setStartDate(nextStart);
+    }
     // Новый предшественник мог сделать выбранную веху циклом — сбрасываем её, а
     // не отправляем связь, которую бэкенд заведомо отклонит.
     if (leadsToMilestoneTaskId && leadsToWouldCycle(leadsToMilestoneTaskId, nextId)) {
@@ -327,6 +348,13 @@ export function CreateTaskDialog({
                   </div>
                 ) : null}
               </div>
+            ) : null}
+
+            {selectedPredecessor && earliestStart && startDate < earliestStart ? (
+              <Alert tone="warning">
+                Задача начнётся раньше, чем закончится #{selectedPredecessor.wbsNumber}. Самое
+                раннее начало — {formatDate(earliestStart)}.
+              </Alert>
             ) : null}
 
             {projectMilestones.length > 0 ? (

@@ -25,6 +25,20 @@ type Task struct {
 
 func (t Task) duration() int { return t.Start.DaysUntil(t.End) }
 
+// workdayDuration — длительность в рабочих днях: сколько их в (Start, End].
+// Сдвиг переносит задачу с этим числом рабочих дней, а не календарных: иначе
+// задача, пересёкшая выходные, меняла бы объём работы и заканчивалась в субботу,
+// а каждый последователь ждал бы понедельника.
+func (t Task) workdayDuration(calendar models.WorkingCalendarType) int {
+	n := 0
+	for day := t.Start.AddDays(1); !day.After(t.End); day = day.AddDays(1) {
+		if isWorkday(calendar, day) {
+			n++
+		}
+	}
+	return n
+}
+
 // Dependency — ребро графа: PredecessorID должен завершиться (или начаться —
 // в зависимости от Type) раньше, чем сможет начаться/закончиться SuccessorID.
 type Dependency struct {
@@ -346,7 +360,7 @@ func (g *Graph) Shift(sourceID uuid.UUID, newStart models.Date) ([]ShiftedTask, 
 		changed[id] = true
 	}
 
-	apply(sourceID, dateRange{Start: newStart, End: newStart.AddDays(source.duration())})
+	apply(sourceID, dateRange{Start: newStart, End: addWorkdays(g.calendar, newStart, source.workdayDuration(g.calendar))})
 
 	started := false
 	for _, id := range g.order {
@@ -378,7 +392,7 @@ func (g *Graph) Shift(sourceID uuid.UUID, newStart models.Date) ([]ShiftedTask, 
 			}
 		}
 		if moved {
-			apply(id, dateRange{Start: start, End: start.AddDays(duration)})
+			apply(id, dateRange{Start: start, End: addWorkdays(g.calendar, start, t.workdayDuration(g.calendar))})
 			causedBy[id] = cause
 		}
 	}

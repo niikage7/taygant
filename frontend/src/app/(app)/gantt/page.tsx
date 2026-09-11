@@ -1,5 +1,6 @@
 "use client";
 
+import { format } from "date-fns";
 import { CalendarDays, CircleCheck, Waypoints } from "lucide-react";
 
 import { EmptyProjectTasks, EmptyProjects, PageError, PageLoading } from "@/components/app/page-state";
@@ -68,7 +69,9 @@ export default function GanttPage() {
           dependencies={dependencies}
           milestones={milestones}
           currentUserId={currentUser?.id}
-          today={new Date().toISOString().slice(0, 10)}
+          // Местная дата: toISOString даёт UTC, и восточнее Гринвича после
+          // полуночи «сегодня» оставалось бы вчерашним днём.
+          today={format(new Date(), "yyyy-MM-dd")}
         />
       )}
     </div>

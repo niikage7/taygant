@@ -1,6 +1,6 @@
 "use client";
 
-import { addDays, format, parseISO } from "date-fns";
+import { addDays, differenceInCalendarDays, format, parseISO } from "date-fns";
 import { CalendarClock, CircleAlert, Plus, TriangleAlert, Undo2, User, Waypoints, X } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -8,13 +8,16 @@ import { CreateTaskDialog } from "@/components/gantt/create-task-dialog";
 import { buildGanttRows } from "@/lib/gantt-rows";
 import { TaskTable } from "@/components/gantt/task-table";
 import { Timeline } from "@/components/gantt/timeline";
+import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { useProjectAccess } from "@/data/project-access";
-import { useMoveTask } from "@/data/queries";
+import { useMoveTask, useRestoreTaskDates } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
+import { describeConflict, findDependencyConflicts } from "@/lib/dependency-conflicts";
 import { cn } from "@/lib/utils";
 import { TASK_TABLE_COMPACT_WIDTH, TASK_TABLE_WIDTH, type TimeScale } from "@/lib/gantt";
 import { useMediaQuery } from "@/lib/use-media-query";
+import { addWorkdays, nearestWorkday, workdaysAfter } from "@/lib/working-calendar";
 import type { Milestone, Project, ShiftSimulation, Task, TaskDependency } from "@/types";
 
 const SCALES = [
@@ -28,15 +31,27 @@ type Filter = "mine" | "critical" | "risks";
 /** Последнее перетаскивание задачи: данных хватает, чтобы его отменить. */
 type PendingMove = {
   task: Task;
-  /** Сдвиг в днях, применённый при переносе. Откат — это сдвиг на -deltaDays. */
+  /** Сдвиг в днях, применённый при переносе. */
   deltaDays: number;
-  /** Даты задачи до переноса — для отката одиночного PATCH-переноса. */
-  originalStartDate: string;
-  originalEndDate: string;
-  /** Признак каскадного переноса: откат идёт тем же путём, что и перенос. */
-  cascade: boolean;
+  /**
+   * Прежние даты всех задач, которые сдвинул перенос: сама задача и, при
+   * каскаде, её последователи. Отмена возвращает каждой её даты.
+   */
+  restore: { taskId: string; startDate: string; endDate: string }[];
   /** Каскадная сводка; null для одиночного переноса без пересчёта цепочки. */
   result: ShiftSimulation | null;
+};
+
+/** Перенос, готовый к отправке: даты уже посчитаны по рабочему календарю. */
+type PlannedMove = {
+  task: Task;
+  deltaDays: number;
+  startDate: string;
+  endDate: string;
+  /** apply-shift с пересчётом цепочки (полный доступ) или PATCH одной задачи. */
+  cascade: boolean;
+  /** Какие связи нарушит перенос — пока список не пуст, ждём подтверждения. */
+  warnings: string[];
 };
 
 /**
@@ -81,30 +96,25 @@ export function GanttBoard({
 
   const access = useProjectAccess();
   const moveTask = useMoveTask();
+  const restoreDates = useRestoreTaskDates();
   // Итог последнего переноса: показываем, что изменилось, и даём отменить
   // случайное перетаскивание. Только последнее — новое перетаскивание затирает
   // предыдущее, чтобы «Отмена» не откатывала давно ушедший план.
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  // Перенос, который нарушит связи задачи: без явного согласия не отправляем.
+  const [pendingConfirm, setPendingConfirm] = useState<PlannedMove | null>(null);
 
   const toggleFilter = (filter: Filter) =>
     setFilters((current) =>
       current.includes(filter) ? current.filter((item) => item !== filter) : [...current, filter],
     );
 
-  // Перенос задачи целиком сдвигает сроки на delta дней, сохраняя длительность.
-  // Веха нулевой длительности — точка, поэтому её начало и конец совпадают.
-  //
   // При полном доступе перенос идёт через apply-shift: сервер пересчитывает по
-  // CPM всю цепочку последователей. Обычный PATCH дат сдвинул бы одну задачу и
-  // оставил её последователя начинаться раньше её конца — молча сломанный план.
-  const handleTaskMove = (task: Task, deltaDays: number) => {
-    if (deltaDays === 0) return;
-    const startDate = format(addDays(parseISO(task.startDate), deltaDays), "yyyy-MM-dd");
-    const endDate = task.isMilestone
-      ? startDate
-      : format(addDays(parseISO(task.endDate), deltaDays), "yyyy-MM-dd");
-    const cascade = access.isFull;
-    setPendingMove(null);
+  // CPM всю цепочку последователей. Участнику уровня edit остаётся PATCH дат
+  // одной задачи — последователей он не двигает, поэтому связи проверяются
+  // заранее (см. handleTaskMove).
+  const commitMove = ({ task, deltaDays, startDate, endDate, cascade }: PlannedMove) => {
+    setPendingConfirm(null);
     moveTask.mutate(
       {
         taskId: task.id,
@@ -114,36 +124,69 @@ export function GanttBoard({
         cascade,
       },
       {
-        onSuccess: (result) => {
+        onSuccess: (response) => {
+          const result = response && "affectedTasks" in response ? response : null;
           setPendingMove({
             task,
             deltaDays,
-            originalStartDate: task.startDate,
-            originalEndDate: task.endDate,
-            cascade,
-            result: result && "affectedTasks" in result ? result : null,
+            // Каскад сообщает прежние даты каждой сдвинутой задачи, включая саму
+            // перенесённую; одиночный PATCH трогает только её.
+            restore: result
+              ? result.affectedTasks.map((affected) => ({
+                  taskId: affected.taskId,
+                  startDate: affected.originalStartDate,
+                  endDate: affected.originalEndDate,
+                }))
+              : [{ taskId: task.id, startDate: task.startDate, endDate: task.endDate }],
+            result,
           });
         },
       },
     );
   };
 
-  // Откат последнего переноса. Каскад отменяем обратным apply-shift (сервер сам
-  // вернёт цепочку), одиночный PATCH — возвратом исходных дат. Оба пути идут
-  // через тот же мутейт, поэтому прогресс и обработка ошибок общие.
+  const calendar = project.workingCalendarType;
+  const wbsOf = new Map(tasks.map((task) => [task.id, task.wbsNumber]));
+
+  // Перенос задачи целиком. Начало примагничиваем к ближайшему рабочему дню, а
+  // длительность держим в рабочих днях, как каскад на сервере: иначе задача
+  // встаёт на выходной, и последователи ждут понедельника. Веха нулевой
+  // длительности — точка, её начало и конец совпадают.
+  const handleTaskMove = (task: Task, dragDays: number) => {
+    const draggedStart = format(addDays(parseISO(task.startDate), dragDays), "yyyy-MM-dd");
+    const startDate = nearestWorkday(calendar, draggedStart, dragDays > 0 ? 1 : -1);
+    const deltaDays = differenceInCalendarDays(parseISO(startDate), parseISO(task.startDate));
+    if (deltaDays === 0) return;
+    const endDate = task.isMilestone
+      ? startDate
+      : addWorkdays(calendar, startDate, workdaysAfter(calendar, task.startDate, task.endDate));
+    const cascade = access.isFull;
+
+    // Каскад сам отодвинет последователей, поэтому при нём сломать можно только
+    // связь с предшественниками; PATCH не двигает никого — проверяем обе стороны.
+    const warnings = findDependencyConflicts({
+      taskId: task.id,
+      startDate,
+      endDate,
+      dependencies,
+      tasks,
+      calendar,
+      checkSuccessors: !cascade,
+    }).map((conflict) => describeConflict(conflict, (id) => wbsOf.get(id)));
+
+    const move = { task, deltaDays, startDate, endDate, cascade, warnings };
+    setPendingMove(null);
+    restoreDates.reset();
+    if (warnings.length > 0) setPendingConfirm(move);
+    else commitMove(move);
+  };
+
+  // Откат последнего переноса: каждой сдвинутой задаче возвращаем её прежние
+  // даты. Обратный apply-shift не подходит — последователей назад он не тянет,
+  // и после «Отмены» цепочка осталась бы сдвинутой.
   const handleUndoMove = () => {
     if (!pendingMove) return;
-    const { task, deltaDays, originalStartDate, originalEndDate, cascade } = pendingMove;
-    moveTask.mutate(
-      {
-        taskId: task.id,
-        shiftDays: -deltaDays,
-        startDate: originalStartDate,
-        endDate: originalEndDate,
-        cascade,
-      },
-      { onSuccess: () => setPendingMove(null) },
-    );
+    restoreDates.mutate(pendingMove.restore, { onSuccess: () => setPendingMove(null) });
   };
 
   const visibleTasks = tasks.filter((task) => {
@@ -220,15 +263,20 @@ export function GanttBoard({
         </div>
       ) : null}
 
-      {moveTask.error ? (
+      {moveTask.error || restoreDates.error ? (
         <div className="flex items-center gap-3 rounded-control bg-danger-tint px-3 py-2.5 text-[13px] text-danger">
           <TriangleAlert className="size-4 shrink-0" />
           <p className="min-w-0 flex-1">
-            {toUserMessage(moveTask.error, {}, "Не удалось перенести задачу")}
+            {moveTask.error
+              ? toUserMessage(moveTask.error, {}, "Не удалось перенести задачу")
+              : toUserMessage(restoreDates.error, {}, "Не удалось отменить перенос")}
           </p>
           <button
             type="button"
-            onClick={() => moveTask.reset()}
+            onClick={() => {
+              moveTask.reset();
+              restoreDates.reset();
+            }}
             aria-label="Скрыть сообщение"
             className="shrink-0 rounded-control text-ink-faint hover:text-ink focus-visible:focus-ring"
           >
@@ -237,10 +285,31 @@ export function GanttBoard({
         </div>
       ) : null}
 
+      {pendingConfirm ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-control bg-warning-tint px-3 py-2.5 text-13 text-warning-ink"
+        >
+          <TriangleAlert className="size-4 shrink-0 text-warning" />
+          <p className="min-w-0 flex-1">
+            <span className="font-semibold">«{pendingConfirm.task.title}»:</span>{" "}
+            {pendingConfirm.warnings.join("; ")}. Всё равно перенести?
+          </p>
+          <span className="flex shrink-0 items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setPendingConfirm(null)}>
+              Не переносить
+            </Button>
+            <Button size="sm" onClick={() => commitMove(pendingConfirm)}>
+              Перенести
+            </Button>
+          </span>
+        </div>
+      ) : null}
+
       {pendingMove ? (
         <ShiftSummary
           move={pendingMove}
-          isUndoing={moveTask.isPending}
+          isUndoing={restoreDates.isPending}
           onUndo={handleUndoMove}
           onClose={() => setPendingMove(null)}
         />
@@ -362,7 +431,14 @@ function ShiftSummary({
   onClose: () => void;
 }) {
   const { task, result, deltaDays } = move;
-  const affected = result?.affectedTasks.length ?? 0;
+  // В affectedTasks сервер кладёт и саму перенесённую задачу — зависимые без неё.
+  const affected = result?.affectedTasks.filter((item) => item.taskId !== task.id).length ?? 0;
+  // bufferAvailableDays — запас задачи до переноса. Сдвиг вправо его расходует,
+  // поэтому показываем остаток; для сдвига влево честнее сказать, каким он был.
+  const reserve =
+    result && deltaDays > 0
+      ? `остаток резерва: ${Math.max(0, result.bufferAvailableDays - deltaDays)} дн.`
+      : `резерв до переноса: ${result?.bufferAvailableDays ?? 0} дн.`;
   const deadlineDelta = result?.projectDeadlineImpact.deltaDays ?? 0;
   const tone = deadlineDelta > 0 ? "danger" : "brand";
 
@@ -390,7 +466,7 @@ function ShiftSummary({
               : " Зависимые задачи не затронуты."}
             {deadlineDelta !== 0
               ? ` Дедлайн проекта сместился на ${deadlineDelta > 0 ? "+" : ""}${deadlineDelta} дн.`
-              : ` Дедлайн проекта не изменился (резерв: ${result.bufferAvailableDays} дн.).`}
+              : ` Дедлайн проекта не изменился (${reserve}).`}
           </>
         ) : null}
       </p>

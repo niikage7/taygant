@@ -199,6 +199,7 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
             task={detail}
             project={project.data}
             plannedProgressPercent={Math.max(detail.progressPercent - 5, 0)}
+            projectTasks={projectTasks.data ?? []}
             onDraftChange={handleDraftChange}
           />
         ) : (

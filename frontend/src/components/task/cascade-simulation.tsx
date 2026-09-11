@@ -12,7 +12,7 @@ import { ArrowDown, ArrowRight, CalendarX2, Info, Shield, Zap } from "lucide-rea
 
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardLabel } from "@/components/ui/card";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatSigned } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ShiftSimulation } from "@/types";
 
@@ -152,7 +152,9 @@ export function CascadeSimulation({
               <Button
                 variant="soft"
                 onClick={() => onApply(true)}
-                disabled={isApplying || simulation.bufferAvailableDays <= 0}
+                // Показан уже применённый сдвиг: повторное нажатие сдвинуло бы
+                // цепочку ещё раз. Для нового применения нужен новый расчёт.
+                disabled={isApplying || simulation.applied || simulation.bufferAvailableDays <= 0}
                 title={
                   simulation.bufferAvailableDays <= 0
                     ? "Резерва нет — компенсировать сдвиг нечем"
@@ -162,9 +164,15 @@ export function CascadeSimulation({
                 <Shield />
                 Компенсировать из резерва
               </Button>
-              <Button variant="danger" onClick={() => onApply(false)} disabled={isApplying}>
+              <Button
+                variant="danger"
+                onClick={() => onApply(false)}
+                disabled={isApplying || simulation.applied}
+              >
                 <Zap />
-                {isApplying ? "Применяем…" : `Применить сдвиг цепочки (+${simulation.shiftDays}д)`}
+                {isApplying
+                  ? "Применяем…"
+                  : `Применить сдвиг цепочки (${formatSigned(simulation.shiftDays)}д)`}
               </Button>
             </>
           ) : null}

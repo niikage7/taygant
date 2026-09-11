@@ -18,10 +18,12 @@ import {
   useToggleChecklistItem,
 } from "@/data/queries";
 import { useProjectAccess } from "@/data/project-access";
+import { describeConflict, findDependencyConflicts } from "@/lib/dependency-conflicts";
 import { formatSigned } from "@/lib/format";
 import { ASSIGNABLE_TASK_STATUSES, TASK_STATUS_META, isAssignableStatus } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
-import type { Project, TaskDetail, TaskStatus, TaskUpdateRequest } from "@/types";
+import { Alert } from "@/components/ui/alert";
+import type { Project, Task, TaskDetail, TaskStatus, TaskUpdateRequest } from "@/types";
 
 const SECTION = "text-2xs font-semibold tracking-wider text-ink-faint uppercase";
 
@@ -30,10 +32,13 @@ export function TaskParams({
   task,
   project,
   plannedProgressPercent,
+  projectTasks,
   onDraftChange,
 }: {
   task: TaskDetail;
   project: Project;
+  /** Задачи проекта: по датам связанных задач предупреждаем о нарушенной связи. */
+  projectTasks: Task[];
   /** Плановый прогресс на сегодня — база для расчёта опережения/отставания. */
   plannedProgressPercent: number;
   /** Несохранённые правки — страница по ним решает, активна ли кнопка сохранения. */
@@ -110,6 +115,18 @@ export function TaskParams({
 
   const deviation = progress - plannedProgressPercent;
   const doneCount = task.checklist.filter((item) => item.isDone).length;
+
+  // Правка дат в карточке не двигает связанные задачи — даже у полного доступа.
+  // Поэтому о нарушенной связи говорим прямо у полей, до сохранения.
+  const wbsOf = new Map(projectTasks.map((item) => [item.id, item.wbsNumber]));
+  const dateWarnings = findDependencyConflicts({
+    taskId: task.id,
+    startDate,
+    endDate,
+    dependencies: [...task.predecessors, ...task.successors],
+    tasks: projectTasks,
+    calendar: project.workingCalendarType,
+  }).map((conflict) => describeConflict(conflict, (id) => wbsOf.get(id)));
 
   return (
     <Card className="flex flex-col">
@@ -209,6 +226,11 @@ export function TaskParams({
               {task.durationCalendarDays} календарных дней ({task.durationWorkingDays} раб.)
             </span>
           </p>
+          {dateWarnings.length > 0 ? (
+            <div className="mt-3">
+              <Alert tone="warning">{dateWarnings.join(". ")}.</Alert>
+            </div>
+          ) : null}
         </div>
 
         <div>

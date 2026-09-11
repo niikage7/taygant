@@ -14,6 +14,9 @@ import { cn } from "@/lib/utils";
 import type { GanttRow } from "@/lib/gantt-rows";
 import type { Task, TaskDependency } from "@/types";
 
+/** Сколько моноширинных знаков влезает в колонку «Пред.» — «#5, #6». */
+const PREDECESSORS_MAX_CHARS = 6;
+
 /** Левая часть диаграммы — реестр задач, построчно совпадающий с таймлайном. */
 export function TaskTable({
   rows,
@@ -42,7 +45,13 @@ export function TaskTable({
   const isAtRisk = (task: Task) =>
     highlightCriticalPath && task.isCriticalPath && task.planVsActualDeviationDays < 0;
 
-  const predecessorOf = new Map(dependencies.map((d) => [d.successorTaskId, d.predecessorTaskId]));
+  // У задачи бывает несколько предшественников — показываем всех, иначе колонка
+  // молча теряла бы все связи, кроме последней.
+  const predecessorsOf = new Map<string, string[]>();
+  for (const dependency of dependencies) {
+    const list = predecessorsOf.get(dependency.successorTaskId) ?? [];
+    predecessorsOf.set(dependency.successorTaskId, [...list, dependency.predecessorTaskId]);
+  }
   const wbsOf = new Map(allTasks.map((task) => [task.id, task.wbsNumber]));
 
   return (
@@ -143,7 +152,14 @@ export function TaskTable({
               : isMilestoneTask && (task.status === "planned" || task.status === "in_progress")
                 ? { label: "Веха", tone: "brand" as const }
                 : TASK_STATUS_META[task.status];
-          const predecessor = predecessorOf.get(task.id);
+          const predecessors = (predecessorsOf.get(task.id) ?? []).map(
+            (id) => `#${wbsOf.get(id) ?? "?"}`,
+          );
+          // Не влезает список — первый номер и «+N», полный список в подсказке.
+          const predecessorsLabel =
+            predecessors.join(", ").length <= PREDECESSORS_MAX_CHARS
+              ? predecessors.join(", ")
+              : `${predecessors[0]} +${predecessors.length - 1}`;
           const StatusIcon =
             task.status === "done"
               ? CircleCheck
@@ -262,8 +278,11 @@ export function TaskTable({
                 )}
               </span>
 
-              <span className="w-12 shrink-0 text-right font-mono text-xs text-brand">
-                {predecessor ? `#${wbsOf.get(predecessor) ?? "?"}` : "—"}
+              <span
+                className="w-12 shrink-0 truncate text-right font-mono text-xs text-brand"
+                title={predecessors.length > 1 ? predecessors.join(", ") : undefined}
+              >
+                {predecessors.length > 0 ? predecessorsLabel : "—"}
               </span>
               </>
               )}
