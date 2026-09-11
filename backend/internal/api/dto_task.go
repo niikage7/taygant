@@ -188,12 +188,25 @@ type historyEntryDTO struct {
 	OldValue  *string   `json:"oldValue"`
 	NewValue  *string   `json:"newValue"`
 	CreatedAt string    `json:"createdAt"`
+	// Source — "app" или "assistant": правка сделана в приложении или
+	// нейронкой через MCP (с подтверждения actor).
+	Source string `json:"source"`
+	// Via — чем подключён ассистент (имя личного ключа); null для правок в приложении.
+	Via *string `json:"via"`
 }
 
 func newHistoryEntryDTO(h models.TaskHistoryEntry) historyEntryDTO {
 	var actor userDTO
 	if h.Actor != nil {
 		actor = newUserDTO(*h.Actor)
+	}
+	source := h.Source
+	if source == "" {
+		source = models.HistorySourceApp
+	}
+	var via *string
+	if h.Via != "" {
+		via = &h.Via
 	}
 	return historyEntryDTO{
 		ID:        h.ID,
@@ -204,5 +217,7 @@ func newHistoryEntryDTO(h models.TaskHistoryEntry) historyEntryDTO {
 		OldValue:  h.OldValue,
 		NewValue:  h.NewValue,
 		CreatedAt: h.CreatedAt.Format(rfc3339),
+		Source:    source,
+		Via:       via,
 	}
 }

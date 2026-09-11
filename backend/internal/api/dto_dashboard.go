@@ -60,6 +60,14 @@ func newMemberWorkloadDTO(w service.MemberWorkload) memberWorkloadDTO {
 	}
 }
 
+// statusChangesDTO — схема StatusChangeStats: смены статусов за период и
+// сколько из них сделано через ассистента (MCP).
+type statusChangesDTO struct {
+	PeriodDays   int `json:"periodDays"`
+	Total        int `json:"total"`
+	ViaAssistant int `json:"viaAssistant"`
+}
+
 // projectDashboardDTO — схема ProjectDashboard.
 type projectDashboardDTO struct {
 	Project                projectSummaryDTO      `json:"project"`
@@ -74,6 +82,7 @@ type projectDashboardDTO struct {
 	Risks                  []projectRiskDTO       `json:"risks"`
 	AttentionTasks         []attentionTaskDTO     `json:"attentionTasks"`
 	TeamWorkload           []memberWorkloadDTO    `json:"teamWorkload"`
+	StatusChanges          statusChangesDTO       `json:"statusChanges"`
 }
 
 func newProjectDashboardDTO(r service.DashboardResult) projectDashboardDTO {
@@ -129,5 +138,10 @@ func newProjectDashboardDTO(r service.DashboardResult) projectDashboardDTO {
 		Risks:             risks,
 		AttentionTasks:    attention,
 		TeamWorkload:      workload,
+		StatusChanges: statusChangesDTO{
+			PeriodDays:   r.StatusChanges.PeriodDays,
+			Total:        r.StatusChanges.Total,
+			ViaAssistant: r.StatusChanges.ViaAssistant,
+		},
 	}
 }

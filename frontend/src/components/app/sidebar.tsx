@@ -4,6 +4,7 @@
 
 import {
   BarChart3,
+  Bot,
   CircleAlert,
   CirclePlus,
   Download,
@@ -46,6 +47,7 @@ function navItems(detailsHref: string | null): (NavItem & { disabled?: boolean }
       disabled: !detailsHref,
     },
     { href: "/team", label: "Команда проекта", icon: Users },
+    { href: "/assistant", label: "Ассистент (MCP)", icon: Bot },
     { href: "/projects/new", label: "Новый проект", icon: CirclePlus },
   ];
 }

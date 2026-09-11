@@ -174,6 +174,29 @@ func TestRateLimit(t *testing.T) {
 	}
 }
 
+// /mcp смонтирован и закрыт личным ключом ещё до обращения к базе: без ключа —
+// 401, а не 500 из-за недоступного PostgreSQL. Лимит запросов у него свой.
+func TestMCPEndpointRequiresPersonalToken(t *testing.T) {
+	app := newApp(t, func(cfg *config.Config) { cfg.RateLimitMax = 1 })
+	mcpRequest := func() *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		return req
+	}
+
+	if resp, _ := do(t, app, mcpRequest()); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("POST /mcp без ключа: код %d, ожидался 401", resp.StatusCode)
+	}
+	// Квоту /api/v1 запросы ассистента не тратят.
+	if resp, _ := do(t, app, request(http.MethodGet, "/api/v1/projects", nil)); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("после запроса к /mcp /api/v1 ответил %d, ожидался 401", resp.StatusCode)
+	}
+	if resp, _ := do(t, app, mcpRequest()); resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("второй запрос к /mcp при лимите 1: код %d, ожидался 429", resp.StatusCode)
+	}
+}
+
 // За доверенным прокси (Next.js в compose) квота считается по реальному IP клиента.
 func TestRateLimitUsesClientIPBehindTrustedProxy(t *testing.T) {
 	app := newApp(t, func(cfg *config.Config) {

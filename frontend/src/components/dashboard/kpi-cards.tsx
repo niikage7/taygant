@@ -1,11 +1,11 @@
 import { differenceInCalendarDays, parseISO } from "date-fns";
-import { CircleDot, Clock3 } from "lucide-react";
+import { Bot, CircleDot, Clock3 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardFooter, CardLabel } from "@/components/ui/card";
 import { ProgressRing } from "@/components/ui/progress";
 import { formatDateLong, plural } from "@/lib/format";
-import type { Project, ProjectDashboard } from "@/types";
+import type { Project, ProjectDashboard, StatusChangeStats } from "@/types";
 
 const ADHERENCE_META = {
   on_track: { label: "В графике", tone: "success" as const },
@@ -70,9 +70,10 @@ export function KpiCards({ data, project }: { data: ProjectDashboard; project: P
             </span>
           </div>
           <p className="mt-4 flex items-baseline gap-3">
+            {/* Плюс — прогноз окончания позже дедлайна, минус — раньше (см. api-spec.yml). */}
             <span
               className={
-                schedule.forecastDeviationDays < 0
+                schedule.forecastDeviationDays > 0
                   ? "text-2xl font-bold text-danger"
                   : "text-2xl font-bold text-success"
               }
@@ -126,9 +127,27 @@ export function KpiCards({ data, project }: { data: ProjectDashboard; project: P
             {data.teamVelocity.tasksPerWeek} задач / нед.
           </span>
         </CardFooter>
+        <CardFooter
+          title={`Доля смен статуса за ${data.statusChanges.periodDays} дней, сделанных через ассистента (MCP)`}
+        >
+          <span className="flex items-center gap-1.5 text-ink-muted">
+            <Bot className="size-3.5 shrink-0" />
+            Статусы через ассистента:
+          </span>
+          <span className="font-mono text-accent">{assistantShare(data.statusChanges)}</span>
+        </CardFooter>
       </Card>
     </div>
   );
+}
+
+/**
+ * Метрика подключения к нейронкам из docs/mcp.md: если ассистент помогает
+ * держать статусы актуальными, доля смен «через ассистента» растёт.
+ */
+function assistantShare({ total, viaAssistant }: StatusChangeStats): string {
+  if (total === 0) return "смен статуса не было";
+  return `${Math.round((viaAssistant / total) * 100)}% · ${viaAssistant} из ${total}`;
 }
 
 function StatusLine({ color, value, label }: { color: string; value: number; label: string }) {

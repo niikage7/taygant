@@ -16,6 +16,7 @@ import (
 
 	"taygant_backend/internal/api"
 	"taygant_backend/internal/config"
+	"taygant_backend/internal/mcpserver"
 )
 
 // New создаёт настроенное приложение, готовое к Listen.
@@ -52,8 +53,18 @@ func New(cfg config.Config, db *gorm.DB) *fiber.App {
 
 	api.New(db, cfg).Register(app, rateLimiter(cfg))
 
+	// MCP — подключение нейронок пользователей (docs/mcp.md). Живёт вне
+	// /api/v1: это не REST-контракт из api-spec.yml, а отдельный протокол со
+	// своим входом по личным ключам (JWT браузера здесь не принимается).
+	// Лимитер свой: запросы ассистента не должны съедать квоту веб-интерфейса.
+	app.All("/mcp", rateLimiter(cfg), netHTTPHandler(mcpserver.NewHandler(db), mcpRequestTimeout))
+
 	return app
 }
+
+// mcpRequestTimeout ограничивает один запрос к MCP. Инструменты отвечают
+// за доли секунды; зависший запрос не должен держать горутину бесконечно.
+const mcpRequestTimeout = 30 * time.Second
 
 // corsConfig разрешает браузеру обращаться к API только со страниц из белого списка origin'ов.
 // CORS — ограничение на стороне браузера: он не мешает curl или боту достучаться до API,

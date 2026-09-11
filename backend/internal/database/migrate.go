@@ -21,6 +21,7 @@ var schema = []any{
 	&models.ChecklistItem{},
 	&models.TaskComment{},
 	&models.TaskHistoryEntry{},
+	&models.MCPToken{},
 }
 
 // Migrate приводит схему БД в соответствие с моделями.

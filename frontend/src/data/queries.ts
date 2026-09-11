@@ -8,6 +8,7 @@ import {
   dashboardService,
   dependenciesService,
   historyService,
+  mcpTokensService,
   membersService,
   simulationService,
   milestonesService,
@@ -22,6 +23,8 @@ import type {
   GanttScale,
   HistoryEntry,
   ApplyShiftRequest,
+  McpToken,
+  McpTokenCreateRequest,
   MemberWorkload,
   MilestoneCreateRequest,
   Project,
@@ -62,6 +65,7 @@ export const queryKeys = {
   members: (projectId: string) => ["projects", projectId, "members"] as const,
   users: (search: string) => ["users", search] as const,
   task: (taskId: string) => ["tasks", taskId] as const,
+  mcpTokens: ["me", "mcp-tokens"] as const,
 };
 
 export function useProjects(): UseQueryResult<ProjectSummary[]> {
@@ -293,6 +297,30 @@ export function useUsers(search?: string): UseQueryResult<User[]> {
   return useQuery({
     queryKey: queryKeys.users(search ?? ""),
     queryFn: () => usersService.list(search),
+  });
+}
+
+/** Личные ключи для подключения ассистента по MCP. */
+export function useMcpTokens(): UseQueryResult<McpToken[]> {
+  return useQuery({
+    queryKey: queryKeys.mcpTokens,
+    queryFn: () => mcpTokensService.list(),
+  });
+}
+
+export function useCreateMcpToken() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: McpTokenCreateRequest) => mcpTokensService.create(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mcpTokens }),
+  });
+}
+
+export function useRevokeMcpToken() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tokenId: string) => mcpTokensService.revoke(tokenId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mcpTokens }),
   });
 }
 

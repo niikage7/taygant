@@ -16,6 +16,11 @@ export function formatDateLong(iso: string): string {
   return format(parseISO(iso), "d MMM yyyy", { locale: ru });
 }
 
+/** Момент времени: «2025-11-07T09:05:00Z» → «7 ноя 2025, 16:05» (в поясе браузера). */
+export function formatDateTime(iso: string): string {
+  return format(parseISO(iso), "d MMM yyyy, HH:mm", { locale: ru });
+}
+
 /** Короткий день недели: «2025-11-15» → «Сб». */
 export function formatWeekday(iso: string): string {
   const day = format(parseISO(iso), "EEEEEE", { locale: ru });
