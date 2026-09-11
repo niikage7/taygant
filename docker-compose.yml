@@ -1,0 +1,84 @@
+# Окружение для разработки, демо и деплоя: PostgreSQL + backend + frontend.
+#
+# Перед первым запуском: cp .env.example .env (там ключ для разработки;
+# на сервере ключ задаёт CD из секрета GitHub — см. .env.example).
+#
+# Запуск:  docker compose up --build        → приложение на http://localhost:3000
+# Логи:    docker compose logs -f backend
+# Сброс:   docker compose down -v   (-v удаляет том с данными)
+#
+# Снаружи открыт только фронтенд. Бэкенд и база слушают 127.0.0.1: к ним можно
+# подключиться с этой же машины (psql, `go run .`, curl), но не из сети.
+# Браузер ходит в API через фронтенд: /backend/* → http://backend:4000/*.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?задайте POSTGRES_USER в файле .env (образец — .env.example)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в файле .env (сгенерировать — openssl rand -hex 24)}
+      POSTGRES_DB: ${POSTGRES_DB:?задайте POSTGRES_DB в файле .env (образец — .env.example)}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # backend стартует одновременно с БД и без этой проверки успел бы
+      # отвалиться на первом подключении.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_PORT: "4000"
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+      # Обязателен: без него compose остановится с понятной ошибкой, а не
+      # запустит бэкенд с общеизвестным ключом из репозитория.
+      JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET в файле .env рядом с docker-compose.yml (образец — .env.example)}
+      ACCESS_TOKEN_TTL: "24h"
+      REFRESH_TOKEN_TTL: "720h"
+      # По умолчанию выключено: пустая БД без демо-пользователей и демо-проекта.
+      # Включить для локальной демонстрации — SEED_DEMO_DATA=true в .env.
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      ALLOWED_ORIGINS: "http://localhost:3000"
+      RATE_LIMIT_MAX: "300"
+      RATE_LIMIT_WINDOW: "1m"
+    ports:
+      - "127.0.0.1:4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:4000/ping || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Вшивается в сборку: rewrites Next.js вычисляются во время `next build`.
+        BACKEND_URL: "http://backend:4000"
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/login || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres-data:

@@ -1,0 +1,14 @@
+# Всё, что не нужно для сборки: зависимости ставятся внутри образа,
+# а локальная сборка и env-файлы только замедлили бы и загрязнили контекст.
+node_modules
+.next
+out
+coverage
+.env*
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+npm-debug.log*
+.pnpm-debug.log*
+Dockerfile
+.dockerignore

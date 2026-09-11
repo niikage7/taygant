@@ -1,0 +1,33 @@
+# Инструкции для Claude Code — локальные, в репозиторий не идут.
+/CLAUDE.md
+/.claude/
+
+# Спецификация API (backend/api-spec.yml) намеренно НЕ игнорируется —
+# это общий контракт с фронтендом и должна лежать в репозитории.
+
+# Go
+/backend/backend
+/backend/main
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# Переменные окружения
+.env
+.env.local
+*.local
+
+# Редакторы / ОС
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Другое
+/docs/case-compliance-audit.md

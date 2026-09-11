@@ -1,0 +1,18 @@
+# Дополнение к docker-compose.yml для смоук-теста в CI.
+#
+# CI и деплой выполняются на одном self-hosted runner'е. Проверочный стек не
+# должен занимать порты 3000/4000/5432 — там живёт задеплоенная версия. Поэтому
+# порты сбрасываются, а проверки идут изнутри контейнеров (docker compose exec).
+# !reset требует Docker Compose 2.24+.
+
+services:
+  postgres:
+    ports: !reset []
+    # Не перезапускать упавший контейнер: в CI падение должно быть видно сразу.
+    restart: "no"
+  backend:
+    ports: !reset []
+    restart: "no"
+  frontend:
+    ports: !reset []
+    restart: "no"

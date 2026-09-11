@@ -1,0 +1,421 @@
+"use client";
+
+import * as Dialog from "@radix-ui/react-dialog";
+import { addDays, format } from "date-fns";
+import { Diamond, ListTodo, Plus, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+
+import { TaskMultiPicker } from "@/components/task/task-multi-picker";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  useCreateTask,
+  useGantt,
+  useLinkPredecessors,
+  useMilestones,
+  useProjectMembers,
+  useTasks,
+} from "@/data/queries";
+import { toUserMessage } from "@/lib/api-error-message";
+import { successorsReachableFrom } from "@/lib/milestone-links";
+import { cn } from "@/lib/utils";
+
+const toIso = (date: Date) => format(date, "yyyy-MM-dd");
+
+
+/**
+ * Создание задачи проекта вместе со связями.
+ *
+ * Предшественники уходят в теле создания (`predecessors`): у обычной задачи —
+ * «идёт после», у вехи — список работ, которые к ней ведут. Бэкенд создаёт
+ * задачу и связи одной транзакцией. «Ведёт к вехе» у обычной задачи — связь, где
+ * новая задача сама предшественник: в теле создания её не выразить, поэтому это
+ * второй запрос сразу после создания.
+ */
+export function CreateTaskDialog({
+  projectId,
+  trigger,
+}: {
+  projectId: string;
+  /** Кнопка-триггер: в шапке это «+ Задача», внизу таблицы — строка-подсказка. */
+  trigger: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [assigneeId, setAssigneeId] = useState("");
+  const [startDate, setStartDate] = useState(() => toIso(new Date()));
+  const [endDate, setEndDate] = useState(() => toIso(addDays(new Date(), 5)));
+  const [isMilestone, setIsMilestone] = useState(false);
+  const [milestoneId, setMilestoneId] = useState("");
+  const [predecessorId, setPredecessorId] = useState("");
+  const [leadsToMilestoneTaskId, setLeadsToMilestoneTaskId] = useState("");
+  const [milestonePredecessorIds, setMilestonePredecessorIds] = useState<string[]>([]);
+  const [linkWarning, setLinkWarning] = useState<string | null>(null);
+
+  const members = useProjectMembers(projectId);
+  const createTask = useCreateTask(projectId);
+
+  const milestones = useMilestones(projectId);
+  const projectMilestones = milestones.data ?? [];
+
+  const projectTasks = useTasks(projectId).data ?? [];
+  const dependencies = useGantt(projectId, "weeks").data?.dependencies ?? [];
+  const linkPredecessors = useLinkPredecessors();
+
+  // Веха M недопустима, если выбранный предшественник P уже стоит после неё:
+  // M → … → P → новая задача → M замкнуло бы цикл, и второй запрос упал бы уже
+  // после того, как задача создана.
+  const leadsToWouldCycle = (milestoneTaskId: string, afterTaskId: string) =>
+    Boolean(afterTaskId) &&
+    (milestoneTaskId === afterTaskId ||
+      successorsReachableFrom(milestoneTaskId, dependencies).has(afterTaskId));
+  const hasMilestoneTasks = projectTasks.some((task) => task.isMilestone);
+  const milestoneTaskOptions = projectTasks.filter(
+    (task) => task.isMilestone && !leadsToWouldCycle(task.id, predecessorId),
+  );
+
+  const validRange = endDate >= startDate;
+  const canSubmit =
+    title.trim().length > 0 && validRange && !createTask.isPending && !linkPredecessors.isPending;
+
+  function reset() {
+    // Тип тоже сбрасываем: после создания вехи следующий диалог иначе открывался
+    // бы сразу на «Вехе», и обычную задачу легко было создать вехой по ошибке.
+    setIsMilestone(false);
+    setTitle("");
+    setDescription("");
+    setAssigneeId("");
+    setMilestoneId("");
+    setPredecessorId("");
+    setLeadsToMilestoneTaskId("");
+    setMilestonePredecessorIds([]);
+  }
+
+  function changePredecessor(nextId: string) {
+    setPredecessorId(nextId);
+    // Новый предшественник мог сделать выбранную веху циклом — сбрасываем её, а
+    // не отправляем связь, которую бэкенд заведомо отклонит.
+    if (leadsToMilestoneTaskId && leadsToWouldCycle(leadsToMilestoneTaskId, nextId)) {
+      setLeadsToMilestoneTaskId("");
+    }
+  }
+
+  function submit() {
+    if (!canSubmit) return;
+    setLinkWarning(null);
+    const createdTitle = title.trim();
+    const leadsTo = isMilestone ? "" : leadsToMilestoneTaskId;
+    const predecessorIds = isMilestone ? milestonePredecessorIds : predecessorId ? [predecessorId] : [];
+
+    createTask.mutate(
+      {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        assigneeId: assigneeId || undefined,
+        startDate,
+        // У вехи нулевая длительность — конец совпадает с началом.
+        endDate: isMilestone ? startDate : endDate,
+        isMilestone,
+        milestoneId: milestoneId || undefined,
+        predecessors:
+          predecessorIds.length > 0
+            ? predecessorIds.map((taskId) => ({ taskId, type: "FS" as const, lagDays: 0 }))
+            : undefined,
+      },
+      {
+        onSuccess: (created) => {
+          reset();
+          if (!leadsTo) {
+            setOpen(false);
+            return;
+          }
+          linkPredecessors.mutate(
+            { successorTaskId: leadsTo, predecessorIds: [created.id] },
+            {
+              onSuccess: (errors) => {
+                if (errors.length === 0) {
+                  setOpen(false);
+                  return;
+                }
+                // Задача уже создана — закрыть диалог молча значило бы потерять
+                // сообщение о том, что связи нет.
+                setLinkWarning(
+                  `Задача «${createdTitle}» создана, но не связана с вехой: ${toUserMessage(
+                    errors[0].error,
+                    {},
+                    "не удалось создать связь",
+                  )}. Свяжите их на карточке вехи.`,
+                );
+              },
+            },
+          );
+        },
+      },
+    );
+  }
+
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          createTask.reset();
+          setLinkWarning(null);
+        }
+      }}
+    >
+      <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
+
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/30" />
+        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100vh-2rem)] w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-card bg-surface p-6 shadow-popover">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Dialog.Title className="text-15 font-semibold text-ink">
+                Новая задача
+              </Dialog.Title>
+              <Dialog.Description className="mt-1 text-13 text-ink-muted">
+                Задача появится в реестре и на диаграмме Ганта.
+              </Dialog.Description>
+            </div>
+            <Dialog.Close
+              aria-label="Закрыть"
+              className="rounded-control p-1 text-ink-faint hover:text-ink focus-visible:focus-ring"
+            >
+              <X className="size-4" />
+            </Dialog.Close>
+          </div>
+
+          <form
+            className="mt-5 space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
+            }}
+          >
+            <div
+              role="radiogroup"
+              aria-label="Тип элемента графика"
+              className="grid grid-cols-2 gap-2"
+            >
+              <TypeOption
+                active={!isMilestone}
+                onClick={() => setIsMilestone(false)}
+                icon={<ListTodo className="size-4" />}
+                title="Задача"
+                hint="Работа с длительностью и прогрессом"
+              />
+              <TypeOption
+                active={isMilestone}
+                onClick={() => setIsMilestone(true)}
+                icon={<Diamond className="size-4" />}
+                title="Веха"
+                hint="Событие-контроль нулевой длительности"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="task-title">
+                Название <span className="text-danger">*</span>
+              </Label>
+              <Input
+                id="task-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Например, Нагрузочное тестирование"
+                required
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="task-desc">Описание</Label>
+              <Textarea
+                id="task-desc"
+                rows={3}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="task-assignee">Ответственный</Label>
+              <Select
+                id="task-assignee"
+                value={assigneeId}
+                onChange={(event) => setAssigneeId(event.target.value)}
+              >
+                <option value="">Не назначен</option>
+                {(members.data ?? []).map((member) => (
+                  <option key={member.user.id} value={member.user.id}>
+                    {member.user.fullName}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="task-start">Начало</Label>
+                <DateInput id="task-start" value={startDate} onChange={setStartDate} />
+              </div>
+              {!isMilestone ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="task-end">Окончание</Label>
+                  <DateInput
+                    id="task-end"
+                    value={endDate}
+                    onChange={setEndDate}
+                    minDate={startDate}
+                    invalid={!validRange}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            {isMilestone ? (
+              <div className="space-y-1.5">
+                <Label>Задачи, ведущие к вехе</Label>
+                <TaskMultiPicker
+                  label="Задачи, ведущие к вехе"
+                  tasks={projectTasks}
+                  selected={milestonePredecessorIds}
+                  onChange={setMilestonePredecessorIds}
+                  lateAfter={startDate}
+                  emptyText="В проекте пока нет задач — работы можно привязать позже на карточке вехи."
+                />
+              </div>
+            ) : projectTasks.length > 0 ? (
+              <div className={cn("grid gap-3", hasMilestoneTasks && "sm:grid-cols-2")}>
+                <div className="space-y-1.5">
+                  <Label htmlFor="task-predecessor">Идёт после задачи</Label>
+                  <Select
+                    id="task-predecessor"
+                    value={predecessorId}
+                    onChange={(event) => changePredecessor(event.target.value)}
+                  >
+                    <option value="">Ни после какой</option>
+                    {projectTasks.map((task) => (
+                      <option key={task.id} value={task.id}>
+                        #{task.wbsNumber} {task.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                {hasMilestoneTasks ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="task-leads-to">Ведёт к вехе</Label>
+                    <Select
+                      id="task-leads-to"
+                      value={leadsToMilestoneTaskId}
+                      onChange={(event) => setLeadsToMilestoneTaskId(event.target.value)}
+                    >
+                      <option value="">Ни к какой</option>
+                      {milestoneTaskOptions.map((task) => (
+                        <option key={task.id} value={task.id}>
+                          #{task.wbsNumber} {task.title}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {projectMilestones.length > 0 ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="task-milestone">Контрольная точка</Label>
+                <Select
+                  id="task-milestone"
+                  value={milestoneId}
+                  onChange={(event) => setMilestoneId(event.target.value)}
+                >
+                  <option value="">Вне вех</option>
+                  {projectMilestones.map((milestone) => (
+                    <option key={milestone.id} value={milestone.id}>
+                      {milestone.code ? `${milestone.code} · ` : ""}
+                      {milestone.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : null}
+
+            {createTask.isError ? (
+              <Alert tone="danger">
+                {toUserMessage(
+                  createTask.error,
+                  { 403: "Недостаточно прав для создания задач" },
+                  "Не удалось создать задачу",
+                )}
+              </Alert>
+            ) : null}
+
+            {linkWarning ? <Alert tone="warning">{linkWarning}</Alert> : null}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Dialog.Close asChild>
+                <Button type="button" variant="ghost">
+                  Отмена
+                </Button>
+              </Dialog.Close>
+              <Button type="submit" disabled={!canSubmit}>
+                <Plus />
+                {createTask.isPending ? "Создаём…" : isMilestone ? "Создать веху" : "Создать задачу"}
+              </Button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function TypeOption({
+  active,
+  onClick,
+  icon,
+  title,
+  hint,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  title: string;
+  hint: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={cn(
+        "flex items-start gap-2.5 rounded-control border p-3 text-left transition-colors focus-visible:focus-ring",
+        active
+          ? "border-brand bg-brand-tint"
+          : "border-line bg-surface hover:bg-surface-subtle",
+      )}
+    >
+      <span className={active ? "mt-0.5 text-brand" : "mt-0.5 text-ink-faint"}>{icon}</span>
+      <span className="min-w-0">
+        <span
+          className={cn(
+            "block text-13 font-semibold",
+            active ? "text-brand" : "text-ink",
+          )}
+        >
+          {title}
+        </span>
+        <span className="mt-0.5 block text-xs text-ink-muted">{hint}</span>
+      </span>
+    </button>
+  );
+}

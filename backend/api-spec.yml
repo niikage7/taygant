@@ -1,0 +1,2055 @@
+openapi: 3.0.3
+info:
+  title: ПроектКонтроль API
+  description: >
+    API для MVP-приложения управления проектами и диаграммы Ганта (кейс «Проект под контролем»).
+    Позволяет создавать проекты, задачи и зависимости между ними, строить диаграмму Ганта
+    с расчётом критического пути (CPM), моделировать сдвиг сроков (what-if) и отслеживать
+    состояние/риски проекта.
+  version: "1.0.0"
+
+servers:
+  - url: /api/v1
+    description: Базовый путь API
+
+tags:
+  - name: Auth
+    description: Аутентификация и выдача токенов
+  - name: Users
+    description: Пользователи платформы
+  - name: McpTokens
+    description: >
+      Личные ключи для подключения нейронки пользователя (Claude Code, Cursor…) к MCP-серверу
+      приложения. Сам MCP-сервер живёт вне этого API — по адресу /mcp (через фронтенд —
+      /backend/mcp): это протокол Model Context Protocol поверх Streamable HTTP, вход по
+      заголовку Authorization: Bearer с личным ключом; JWT браузера там не принимается.
+  - name: Projects
+    description: Проекты и их параметры
+  - name: Members
+    description: Состав команды проекта и роли участников
+  - name: Sprints
+    description: Спринты и релизы внутри проекта
+  - name: Milestones
+    description: Контрольные точки (вехи) проекта
+  - name: Tasks
+    description: Задачи проекта и диаграмма Ганта
+  - name: Dependencies
+    description: Зависимости (связи) между задачами
+  - name: Checklist
+    description: Критерии приёмки задачи (Definition of Done)
+  - name: Comments
+    description: Комментарии команды к задачам
+  - name: History
+    description: Журнал изменений (аудит) задач
+  - name: Simulation
+    description: What-if моделирование и применение сдвига сроков (CPM)
+  - name: Workload
+    description: Загрузка участников команды по часам
+  - name: Dashboard
+    description: Сводные показатели состояния и рисков проекта
+  - name: Export
+    description: Экспорт данных проекта во внешние форматы
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ---------- Auth ----------
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход пользователя
+      description: Проверяет логин/пароль и выдаёт пару access/refresh токенов.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: Email пользователя, используемый как логин.
+                password:
+                  type: string
+                  format: password
+                  description: Пароль пользователя в открытом виде (передаётся только по HTTPS).
+      responses:
+        "200":
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    description: Короткоживущий JWT для авторизации запросов (передаётся в заголовке Authorization).
+                  refreshToken:
+                    type: string
+                    description: Долгоживущий токен для получения нового accessToken без повторного ввода пароля.
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401": { description: Неверные учётные данные }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновление access-токена
+      description: Выдаёт новый accessToken по действующему refreshToken.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+                  description: Refresh-токен, полученный при входе.
+      responses:
+        "200":
+          description: Новый access-токен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    description: Новый короткоживущий JWT.
+
+  # ---------- Users ----------
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Текущий пользователь
+      description: Возвращает профиль пользователя, соответствующего переданному access-токену.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  /users:
+    get:
+      tags: [Users]
+      summary: Список пользователей (для назначения ответственных)
+      description: Используется в мастере создания проекта и при назначении ответственного за задачу.
+      parameters:
+        - name: search
+          in: query
+          description: Подстрока для поиска по имени или email пользователя.
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+
+  # ---------- MCP tokens ----------
+  /users/me/mcp-tokens:
+    get:
+      tags: [McpTokens]
+      summary: Личные ключи текущего пользователя
+      description: Ключи для подключения ассистента, новые сверху. Самих ключей в ответе нет — только подписи.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/McpToken" }
+    post:
+      tags: [McpTokens]
+      summary: Выпустить ключ для ассистента
+      description: >
+        Возвращает сам ключ (secret) — единственный раз: в базе хранится только его хеш.
+        У одного пользователя не больше 10 ключей.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 120
+                  description: Подпись ключа, по которой его узнают в списке и в истории задач.
+                  example: "Claude Code, ноутбук"
+      responses:
+        "201":
+          description: Ключ выпущен
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/McpTokenCreated" }
+        "400": { description: Пустое или слишком длинное название либо исчерпан лимит ключей }
+
+  /users/me/mcp-tokens/{tokenId}:
+    parameters:
+      - name: tokenId
+        in: path
+        required: true
+        description: Идентификатор ключа.
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [McpTokens]
+      summary: Отозвать ключ
+      description: Ассистент, подключённый этим ключом, теряет доступ со следующего запроса.
+      responses:
+        "204": { description: Отозван }
+        "404": { description: Среди ключей пользователя такого нет }
+
+  # ---------- Projects ----------
+  /projects:
+    get:
+      tags: [Projects]
+      summary: Список проектов пользователя
+      description: Возвращает проекты, доступные текущему пользователю, с краткими сводными метриками.
+      parameters:
+        - name: status
+          in: query
+          description: Фильтр по статусу проекта.
+          schema: { $ref: "#/components/schemas/ProjectStatus" }
+        - name: search
+          in: query
+          description: Подстрока для поиска по названию или коду проекта.
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProjectSummary" }
+    post:
+      tags: [Projects]
+      summary: Создать проект (Шаг 1 мастера инициации)
+      description: >
+        Создаёт проект вместе с базовыми параметрами Ганта и (опционально) начальным составом
+        команды за один вызов — соответствует экрану «Создание нового проекта».
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectCreateRequest" }
+      responses:
+        "201":
+          description: Проект создан
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+
+  /projects/{projectId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Projects]
+      summary: Получить проект по ID
+      description: Возвращает полную карточку проекта, включая параметры календаря и настройки Ганта.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "404": { description: Не найден }
+    patch:
+      tags: [Projects]
+      summary: Изменить параметры проекта (сроки, статус, описание, календарь)
+      description: Частичное обновление проекта — передаются только изменяемые поля.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectUpdateRequest" }
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+    delete:
+      tags: [Projects]
+      summary: Удалить (архивировать) проект
+      description: Переводит проект в статус archived; данные проекта не удаляются физически.
+      responses:
+        "204": { description: Удалено }
+
+  /projects/{projectId}/dashboard:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Dashboard]
+      summary: Сводка состояния и рисков проекта
+      description: Агрегированные метрики для экрана «Обзор и Аналитика».
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectDashboard" }
+
+  /projects/{projectId}/export:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Export]
+      summary: Экспорт проекта
+      description: Формирует файл выгрузки проекта (реестр задач, диаграмма Ганта, сводка) в выбранном формате.
+      parameters:
+        - name: format
+          in: query
+          required: true
+          description: Формат файла экспорта.
+          schema: { type: string, enum: [pdf, xlsx] }
+      responses:
+        "200":
+          description: Файл экспорта
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+                description: Бинарное содержимое PDF-файла.
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+                description: Бинарное содержимое XLSX-файла.
+
+  # ---------- Members ----------
+  /projects/{projectId}/members:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Members]
+      summary: Команда проекта
+      description: Список участников проекта с их ролями и уровнем доступа.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProjectMember" }
+    post:
+      tags: [Members]
+      summary: Добавить участника в проект
+      description: Добавляет существующего пользователя платформы в команду проекта с указанной ролью.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectMemberCreateRequest" }
+      responses:
+        "201":
+          description: Участник добавлен
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectMember" }
+
+  /projects/{projectId}/members/{memberId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: memberId
+        in: path
+        required: true
+        description: Идентификатор записи участника проекта (ProjectMember.id).
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Members]
+      summary: Изменить роль/уровень доступа участника
+      description: Обновляет роль в проекте, роль в спринтах и/или уровень доступа участника.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                projectRole:
+                  allOf: [{ $ref: "#/components/schemas/ProjectRole" }]
+                  description: Новая роль участника в проекте.
+                sprintRole:
+                  type: string
+                  description: Новая роль участника в рамках спринтов (например, "Аналитик").
+                accessLevel:
+                  allOf: [{ $ref: "#/components/schemas/AccessLevel" }]
+                  description: Новый уровень доступа участника к проекту.
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectMember" }
+    delete:
+      tags: [Members]
+      summary: Удалить участника из проекта
+      description: Исключает участника из команды проекта; ранее назначенные ему задачи не удаляются.
+      responses:
+        "204": { description: Удалено }
+
+  # ---------- Sprints ----------
+  /projects/{projectId}/sprints:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Sprints]
+      summary: Список спринтов/релизов проекта
+      description: Возвращает спринты проекта, используемые для группировки задач.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Sprint" }
+    post:
+      tags: [Sprints]
+      summary: Создать спринт
+      description: Создаёт новый спринт/релиз в рамках проекта.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SprintCreateRequest" }
+      responses:
+        "201":
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sprint" }
+
+  /sprints/{sprintId}:
+    parameters:
+      - name: sprintId
+        in: path
+        required: true
+        description: Идентификатор спринта.
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Sprints]
+      summary: Изменить спринт
+      description: Обновляет название, версию релиза или даты спринта.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SprintCreateRequest" }
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sprint" }
+    delete:
+      tags: [Sprints]
+      summary: Удалить спринт
+      description: Удаляет спринт; связанные задачи остаются в проекте без привязки к спринту.
+      responses:
+        "204": { description: Удалено }
+
+  # ---------- Milestones ----------
+  /projects/{projectId}/milestones:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Milestones]
+      summary: Контрольные точки проекта (КТ)
+      description: Возвращает все вехи проекта в хронологическом порядке.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Milestone" }
+    post:
+      tags: [Milestones]
+      summary: Создать контрольную точку
+      description: Добавляет новую веху проекта с плановой датой.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MilestoneCreateRequest" }
+      responses:
+        "201":
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Milestone" }
+
+  /milestones/{milestoneId}:
+    parameters:
+      - name: milestoneId
+        in: path
+        required: true
+        description: Идентификатор контрольной точки.
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Milestones]
+      summary: Изменить контрольную точку
+      description: Обновляет название, код или плановую дату вехи.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MilestoneCreateRequest" }
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Milestone" }
+    delete:
+      tags: [Milestones]
+      summary: Удалить контрольную точку
+      description: Удаляет веху из проекта.
+      responses:
+        "204": { description: Удалено }
+
+  # ---------- Tasks ----------
+  /projects/{projectId}/tasks:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Tasks]
+      summary: Список задач проекта (реестр / данные для диаграммы Ганта)
+      description: Возвращает задачи проекта с поддержкой фильтров, используемых на экранах реестра и Ганта.
+      parameters:
+        - name: sprintId
+          in: query
+          description: Ограничить выборку задачами конкретного спринта.
+          schema: { type: string, format: uuid }
+        - name: assigneeId
+          in: query
+          description: Ограничить выборку задачами конкретного ответственного.
+          schema: { type: string, format: uuid }
+        - name: milestoneId
+          in: query
+          description: Ограничить выборку задачами, привязанными к конкретной вехе.
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          description: Фильтр по статусу задачи.
+          schema: { $ref: "#/components/schemas/TaskStatus" }
+        - name: criticalPathOnly
+          in: query
+          description: Если true — вернуть только задачи, лежащие на критическом пути.
+          schema: { type: boolean }
+        - name: risksOnly
+          in: query
+          description: Только задачи с отклонением от плана (в зоне риска).
+          schema: { type: boolean }
+        - name: myTasksOnly
+          in: query
+          description: Если true — вернуть только задачи текущего пользователя.
+          schema: { type: boolean }
+        - name: search
+          in: query
+          description: Подстрока для поиска по названию или коду задачи.
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Task" }
+    post:
+      tags: [Tasks]
+      summary: Добавить задачу
+      description: Создаёт задачу в проекте, опционально сразу со связями-предшественниками.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskCreateRequest" }
+      responses:
+        "201":
+          description: Задача создана
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+
+  /projects/{projectId}/gantt:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Tasks]
+      summary: Данные для диаграммы Ганта
+      description: >
+        Задачи проекта вместе со связями и рассчитанным критическим путём (CPM),
+        готовые для отрисовки таймлайна.
+      parameters:
+        - name: scale
+          in: query
+          description: Масштаб шкалы времени на диаграмме.
+          schema: { type: string, enum: [days, weeks, months], default: weeks }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GanttChart" }
+
+  /tasks/{taskId}:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      tags: [Tasks]
+      summary: Детали задачи (карточка задачи)
+      description: Полная карточка задачи со связями, чек-листом DoD и количеством комментариев.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskDetail" }
+        "404": { description: Не найдена }
+    patch:
+      tags: [Tasks]
+      summary: Редактировать задачу (сроки, статус, ответственный, прогресс и т.д.)
+      description: Частичное обновление задачи — передаются только изменяемые поля.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskUpdateRequest" }
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+    delete:
+      tags: [Tasks]
+      summary: Удалить задачу
+      description: Удаляет задачу вместе с её связями, чек-листом и комментариями.
+      responses:
+        "204": { description: Удалено }
+
+  # ---------- Dependencies ----------
+  /tasks/{taskId}/dependencies:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      tags: [Dependencies]
+      summary: Входящие и исходящие связи задачи
+      description: Возвращает предшественников и последователей задачи для сетевого графа связей.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  predecessors:
+                    type: array
+                    description: Задачи, от которых зависит текущая задача.
+                    items: { $ref: "#/components/schemas/TaskDependency" }
+                  successors:
+                    type: array
+                    description: Задачи, которые зависят от текущей задачи.
+                    items: { $ref: "#/components/schemas/TaskDependency" }
+    post:
+      tags: [Dependencies]
+      summary: Связать задачу с другой задачей
+      description: Создаёт связь (зависимость) между текущей задачей и другой задачей проекта.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskDependencyCreateRequest" }
+      responses:
+        "201":
+          description: Связь создана
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskDependency" }
+
+  /dependencies/{dependencyId}:
+    parameters:
+      - name: dependencyId
+        in: path
+        required: true
+        description: Идентификатор связи между задачами.
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [Dependencies]
+      summary: Удалить связь между задачами
+      description: Разрывает зависимость между двумя задачами; сами задачи не удаляются.
+      responses:
+        "204": { description: Удалено }
+
+  # ---------- Checklist (Definition of Done) ----------
+  /tasks/{taskId}/checklist:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      tags: [Checklist]
+      summary: Критерии приёмки (DoD) задачи
+      description: Список критериев готовности (Definition of Done) для задачи.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ChecklistItem" }
+    post:
+      tags: [Checklist]
+      summary: Добавить критерий приёмки
+      description: Добавляет новый пункт в чек-лист Definition of Done задачи.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  description: Формулировка критерия приёмки.
+      responses:
+        "201":
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChecklistItem" }
+
+  /checklist/{itemId}:
+    parameters:
+      - name: itemId
+        in: path
+        required: true
+        description: Идентификатор пункта чек-листа.
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Checklist]
+      summary: Отметить критерий выполненным / изменить текст
+      description: Обновляет текст критерия и/или отмечает его выполненным.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: Новая формулировка критерия приёмки.
+                isDone:
+                  type: boolean
+                  description: Признак выполнения критерия.
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChecklistItem" }
+    delete:
+      tags: [Checklist]
+      summary: Удалить критерий
+      description: Удаляет пункт чек-листа DoD из задачи.
+      responses:
+        "204": { description: Удалено }
+
+  # ---------- Comments ----------
+  /tasks/{taskId}/comments:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      tags: [Comments]
+      summary: Комментарии команды к задаче
+      description: Возвращает ленту комментариев задачи в хронологическом порядке.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Comment" }
+    post:
+      tags: [Comments]
+      summary: Добавить комментарий
+      description: Публикует новый комментарий от имени текущего пользователя.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  description: Текст комментария.
+      responses:
+        "201":
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Comment" }
+
+  # ---------- History ----------
+  /tasks/{taskId}/history:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      tags: [History]
+      summary: Журнал изменений задачи (audit log)
+      description: Хронологический список изменений полей задачи с указанием автора действия.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/HistoryEntry" }
+
+  # ---------- What-if simulation ----------
+  /tasks/{taskId}/simulate-shift:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    post:
+      tags: [Simulation]
+      summary: Смоделировать сдвиг сроков задачи (What-if анализ)
+      description: >
+        Рассчитывает каскадное влияние переноса дат задачи на связанные последующие
+        задачи и итоговый срок сдачи проекта, не применяя изменения.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                newStartDate:
+                  type: string
+                  format: date
+                  description: Новая дата начала задачи, от которой рассчитывается сдвиг.
+                shiftDays:
+                  type: integer
+                  description: Альтернативный способ задать сдвиг — количество дней смещения (может быть отрицательным).
+      responses:
+        "200":
+          description: Результат моделирования
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShiftSimulation" }
+
+  /tasks/{taskId}/apply-shift:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    post:
+      tags: [Simulation]
+      summary: Применить сдвиг цепочки зависимых задач
+      description: Фактически переносит сроки задачи и каскадно связанных с ней задач согласно алгоритму CPM.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                shiftDays:
+                  type: integer
+                  description: Количество дней смещения задачи (может быть отрицательным).
+                compensateFromBuffer:
+                  type: boolean
+                  default: false
+                  description: Если true — сначала пытаться компенсировать сдвиг за счёт резерва (буфера) задачи/проекта.
+                notifyAssignees:
+                  type: boolean
+                  default: true
+                  description: Если true — отправить уведомления ответственным за все затронутые сдвигом задачи.
+      responses:
+        "200":
+          description: Изменения применены
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShiftSimulation" }
+
+  # ---------- Workload ----------
+  /projects/{projectId}/workload:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Workload]
+      summary: Загрузка команды по текущему спринту
+      description: Возвращает загруженность участников проекта в часах относительно их недельного лимита.
+      parameters:
+        - name: sprintId
+          in: query
+          description: Ограничить расчёт конкретным спринтом (по умолчанию — текущий).
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MemberWorkload" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access-токен, полученный через /auth/login, передаётся в заголовке Authorization.
+
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      description: Идентификатор проекта.
+      schema: { type: string, format: uuid }
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      description: Идентификатор задачи.
+      schema: { type: string, format: uuid }
+
+  schemas:
+    ProjectStatus:
+      type: string
+      description: >
+        Статус проекта: draft — черновик (не запущен), active — выполняется,
+        on_hold — приостановлен, completed — завершён, archived — архивирован (удалён логически).
+      enum: [draft, active, on_hold, completed, archived]
+
+    ProjectRole:
+      type: string
+      description: >
+        Роль участника в проекте: project_manager — руководитель проекта,
+        analyst — бизнес-аналитик, developer — разработчик,
+        curator — куратор со стороны заказчика, other — прочая роль.
+      enum: [project_manager, analyst, developer, curator, other]
+
+    AccessLevel:
+      type: string
+      description: >
+        Уровень доступа участника к проекту: full — полный доступ (управление
+        планом, параметрами проекта и командой), edit — может менять статус и
+        сроки только своих задач (где участник назначен исполнителем),
+        view — доступ только для просмотра.
+      enum: [full, edit, view]
+
+    TaskStatus:
+      type: string
+      description: >
+        Статус задачи: planned — предстоит выполнить, in_progress — выполняется,
+        done — выполнена, overdue — просрочена, blocked — заблокирована зависимостью.
+      enum: [planned, in_progress, done, overdue, blocked]
+
+    DependencyType:
+      type: string
+      description: >
+        Тип связи между задачами по методу критического пути (CPM):
+        FS (Finish-to-Start) — предшественник должен завершиться до начала последователя;
+        SS (Start-to-Start) — задачи должны начаться одновременно;
+        FF (Finish-to-Finish) — задачи должны завершиться одновременно;
+        SF (Start-to-Finish) — последователь не может завершиться, пока не начался предшественник.
+      enum: [FS, SS, FF, SF]
+
+    WorkingCalendarType:
+      type: string
+      description: >
+        Тип рабочего календаря проекта: "5/2" — стандартная пятидневная неделя (40 ч/нед),
+        "6/1" — шестидневная рабочая неделя.
+      enum: ["5/2", "6/1"]
+
+    User:
+      type: object
+      description: Пользователь платформы.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор пользователя.
+        fullName:
+          type: string
+          description: Полное имя пользователя.
+          example: "Александр Волков"
+        email:
+          type: string
+          format: email
+          description: Email пользователя, используется как логин.
+        department:
+          type: string
+          description: Организационное подразделение пользователя.
+          example: "Институт кибернетики"
+        position:
+          type: string
+          description: Должность/специализация пользователя.
+          example: "Lead Fullstack"
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Ссылка на изображение аватара пользователя.
+
+    ProjectSummary:
+      type: object
+      description: Краткая карточка проекта для списков и виджетов.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор проекта.
+        code:
+          type: string
+          description: Короткий читаемый код проекта.
+          example: "TPU-2025-CORP"
+        name:
+          type: string
+          description: Название проекта.
+        status:
+          allOf: [{ $ref: "#/components/schemas/ProjectStatus" }]
+          description: Текущий статус проекта.
+        phase:
+          type: string
+          description: Текущая фаза реализации проекта (произвольный текст).
+          example: "Фаза 3: Внедрение и тестирование"
+        startDate:
+          type: string
+          format: date
+          description: Дата начала графика проекта.
+        deadline:
+          type: string
+          format: date
+          description: Плановый дедлайн (срок сдачи) проекта.
+        progressPercent:
+          type: number
+          format: float
+          description: Общий процент выполнения проекта (взвешенный по задачам).
+          example: 64.3
+        healthIndex:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Интегральный индекс здоровья проекта (0–100), отображаемый в виде индикатора мониторинга.
+          example: 64
+        criticalRisksCount:
+          type: integer
+          description: Количество открытых рисков с критической серьёзностью.
+          example: 1
+
+    Project:
+      description: Полная карточка проекта с параметрами календаря и настройками расчёта графика.
+      allOf:
+        - $ref: "#/components/schemas/ProjectSummary"
+        - type: object
+          properties:
+            description:
+              type: string
+              description: Описание и бизнес-цель проекта.
+            customerOrg:
+              type: string
+              description: Заказчик или подразделение, для которого выполняется проект.
+              example: "Институт кибернетики ТПУ"
+            durationCalendarDays:
+              type: integer
+              description: Продолжительность проекта в календарных днях (от startDate до deadline).
+              example: 72
+            workingCalendarType:
+              allOf: [{ $ref: "#/components/schemas/WorkingCalendarType" }]
+              description: Рабочий календарь, используемый при расчёте сроков задач.
+            autoRecalculateDependents:
+              type: boolean
+              default: true
+              description: >
+                Если true — при сдвиге даты задачи все зависимые задачи по цепочке Finish-to-Start
+                автоматически пересчитываются с сохранением буфера.
+            highlightCriticalPath:
+              type: boolean
+              default: true
+              description: Если true — задачи с нулевым резервом времени подсвечиваются как критический путь на диаграмме Ганта.
+            createdBy:
+              allOf: [{ $ref: "#/components/schemas/User" }]
+              description: Пользователь, создавший проект.
+            createdAt:
+              type: string
+              format: date-time
+              description: Дата и время создания проекта.
+            updatedAt:
+              type: string
+              format: date-time
+              description: Дата и время последнего изменения проекта.
+
+    ProjectCreateRequest:
+      type: object
+      description: Данные для создания проекта на первом шаге мастера инициации.
+      required: [name, startDate, deadline]
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          description: Название проекта.
+        description:
+          type: string
+          description: Описание и бизнес-цель проекта.
+        customerOrg:
+          type: string
+          description: Заказчик или подразделение, для которого выполняется проект.
+        startDate:
+          type: string
+          format: date
+          description: Дата старта графика проекта.
+        deadline:
+          type: string
+          format: date
+          description: Плановый дедлайн проекта.
+        workingCalendarType:
+          allOf: [{ $ref: "#/components/schemas/WorkingCalendarType" }]
+          description: Рабочий календарь проекта.
+        autoRecalculateDependents:
+          type: boolean
+          default: true
+          description: Включить автоматический пересчёт зависимых задач при сдвиге дат.
+        highlightCriticalPath:
+          type: boolean
+          default: true
+          description: Подсвечивать критический путь на диаграмме Ганта.
+        members:
+          type: array
+          description: Начальный состав команды проекта, назначаемый на шаге 2 мастера.
+          items: { $ref: "#/components/schemas/ProjectMemberCreateRequest" }
+        saveAsDraft:
+          type: boolean
+          default: false
+          description: Если true — сохранить проект как черновик без перехода к диаграмме Ганта.
+
+    ProjectUpdateRequest:
+      type: object
+      description: Набор полей проекта, доступных для частичного обновления (PATCH).
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          description: Новое название проекта.
+        description:
+          type: string
+          description: Новое описание проекта.
+        status:
+          allOf: [{ $ref: "#/components/schemas/ProjectStatus" }]
+          description: Новый статус проекта.
+        phase:
+          type: string
+          description: Новая фаза реализации проекта.
+        startDate:
+          type: string
+          format: date
+          description: Новая дата старта графика проекта.
+        deadline:
+          type: string
+          format: date
+          description: Новый плановый дедлайн проекта.
+        workingCalendarType:
+          allOf: [{ $ref: "#/components/schemas/WorkingCalendarType" }]
+          description: Новый рабочий календарь проекта.
+
+    ProjectMember:
+      type: object
+      description: Участник команды проекта с назначенной ролью и уровнем доступа.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор записи участника проекта.
+        user:
+          allOf: [{ $ref: "#/components/schemas/User" }]
+          description: Пользователь, добавленный в проект.
+        projectRole:
+          allOf: [{ $ref: "#/components/schemas/ProjectRole" }]
+          description: Роль участника в проекте.
+        sprintRole:
+          type: string
+          description: Роль участника в рамках спринтов (свободный текст, например «Разработчик»).
+          example: "Разработчик"
+        accessLevel:
+          allOf: [{ $ref: "#/components/schemas/AccessLevel" }]
+          description: Уровень доступа участника к проекту.
+        weeklyHoursLimit:
+          type: integer
+          description: Лимит часов участника в неделю, используемый для расчёта загрузки.
+          example: 40
+
+    ProjectMemberCreateRequest:
+      type: object
+      description: Данные для добавления участника в проект.
+      required: [userId, projectRole]
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: Идентификатор добавляемого пользователя.
+        projectRole:
+          allOf: [{ $ref: "#/components/schemas/ProjectRole" }]
+          description: Назначаемая роль участника в проекте.
+        sprintRole:
+          type: string
+          description: Роль участника в рамках спринтов.
+        accessLevel:
+          allOf: [{ $ref: "#/components/schemas/AccessLevel" }]
+          description: Назначаемый уровень доступа.
+
+    Sprint:
+      type: object
+      description: Спринт (итерация) или релиз внутри проекта, используемый для группировки задач.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор спринта.
+        projectId:
+          type: string
+          format: uuid
+          description: Идентификатор проекта, которому принадлежит спринт.
+        name:
+          type: string
+          description: Название спринта.
+          example: "Спринт 4 · Архитектура и визуализация"
+        releaseVersion:
+          type: string
+          description: Версия релиза, связанная со спринтом.
+          example: "2.1"
+        startDate:
+          type: string
+          format: date
+          description: Дата начала спринта.
+        endDate:
+          type: string
+          format: date
+          description: Дата окончания спринта.
+
+    SprintCreateRequest:
+      type: object
+      description: Данные для создания или изменения спринта.
+      required: [name, startDate, endDate]
+      properties:
+        name:
+          type: string
+          description: Название спринта.
+        releaseVersion:
+          type: string
+          description: Версия релиза, связанная со спринтом.
+        startDate:
+          type: string
+          format: date
+          description: Дата начала спринта.
+        endDate:
+          type: string
+          format: date
+          description: Дата окончания спринта.
+
+    MilestoneStatus:
+      type: string
+      description: >
+        Статус контрольной точки: done — достигнута, current — ближайшая/текущая,
+        planned — запланирована, final — финальная веха проекта.
+      enum: [done, current, planned, final]
+
+    Milestone:
+      type: object
+      description: Контрольная точка (веха) проекта — значимое событие с плановой датой.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор контрольной точки.
+        projectId:
+          type: string
+          format: uuid
+          description: Идентификатор проекта, которому принадлежит веха.
+        code:
+          type: string
+          description: Короткий код контрольной точки.
+          example: "КТ-2"
+        name:
+          type: string
+          description: Название контрольной точки.
+          example: "Интеграция Ганта"
+        plannedDate:
+          type: string
+          format: date
+          description: Плановая дата достижения контрольной точки.
+        actualDate:
+          type: string
+          format: date
+          nullable: true
+          description: Фактическая дата достижения контрольной точки (заполняется по факту).
+        status:
+          allOf: [{ $ref: "#/components/schemas/MilestoneStatus" }]
+          description: Текущий статус контрольной точки.
+        riskDays:
+          type: integer
+          nullable: true
+          description: Прогнозируемое отставание от плановой даты, дней.
+        tasksTotal:
+          type: integer
+          description: Число задач, привязанных к вехе (Task.milestoneId).
+        tasksDone:
+          type: integer
+          description: Число привязанных к вехе задач в статусе done.
+
+    MilestoneCreateRequest:
+      type: object
+      description: >
+        Данные для создания или изменения контрольной точки. actualDate
+        учитывается только при изменении (PATCH): отсутствие поля в теле
+        запроса не меняет фактическую дату, null снимает отметку о
+        достижении, значение — отмечает веху достигнутой.
+      required: [name, plannedDate]
+      properties:
+        code:
+          type: string
+          description: Короткий код контрольной точки.
+        name:
+          type: string
+          description: Название контрольной точки.
+        plannedDate:
+          type: string
+          format: date
+          description: Плановая дата достижения контрольной точки.
+        actualDate:
+          type: string
+          format: date
+          nullable: true
+          description: >
+            Фактическая дата достижения — только для PATCH. Поле не передано —
+            не менять, null — снять отметку о достижении, значение — отметить
+            веху достигнутой.
+
+    Task:
+      type: object
+      description: Задача проекта — основной элемент реестра задач и диаграммы Ганта.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор задачи.
+        projectId:
+          type: string
+          format: uuid
+          description: Идентификатор проекта, которому принадлежит задача.
+        sprintId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Идентификатор спринта, к которому привязана задача (может отсутствовать).
+        parentTaskId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Идентификатор родительской задачи для построения иерархии WBS (подзадачи).
+        milestoneId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Идентификатор контрольной точки (вехи), к которой ведёт задача.
+        code:
+          type: string
+          description: Короткий читаемый код задачи.
+          example: "TASK-004"
+        wbsNumber:
+          type: string
+          description: Номер задачи в иерархической структуре работ (WBS).
+          example: "4.2"
+        title:
+          type: string
+          description: Название задачи.
+        assignee:
+          allOf: [{ $ref: "#/components/schemas/User" }]
+          description: Ответственный исполнитель задачи.
+        status:
+          allOf: [{ $ref: "#/components/schemas/TaskStatus" }]
+          description: Текущий статус задачи.
+        isMilestone:
+          type: boolean
+          default: false
+          description: Признак того, что задача является вехой (точкой с нулевой длительностью) на диаграмме Ганта.
+        startDate:
+          type: string
+          format: date
+          description: Плановая дата начала задачи.
+        endDate:
+          type: string
+          format: date
+          description: Плановая дата окончания задачи.
+        durationCalendarDays:
+          type: integer
+          description: Продолжительность задачи в календарных днях.
+        durationWorkingDays:
+          type: integer
+          description: Продолжительность задачи в рабочих днях согласно календарю проекта.
+        progressPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Процент фактического выполнения задачи.
+        weightPercent:
+          type: number
+          format: float
+          description: Вес задачи в общем прогрессе проекта, %.
+        isCriticalPath:
+          type: boolean
+          default: false
+          description: Признак того, что задача лежит на критическом пути (нулевой резерв времени).
+        bufferDays:
+          type: integer
+          default: 0
+          description: Резерв (буфер) времени задачи в днях, доступный для компенсации сдвигов.
+        planVsActualDeviationDays:
+          type: integer
+          description: Отклонение факта от плана в днях. Положительное — опережение, отрицательное — отставание.
+
+    TaskDetail:
+      description: Полная карточка задачи со связями, чек-листом DoD и метаданными для экрана редактирования.
+      allOf:
+        - $ref: "#/components/schemas/Task"
+        - type: object
+          properties:
+            description:
+              type: string
+              description: Развёрнутое описание задачи.
+            externalLink:
+              type: object
+              nullable: true
+              description: Связь задачи с внешней системой отслеживания (например, GitLab issue).
+              properties:
+                provider:
+                  type: string
+                  description: Название внешней системы.
+                  example: "gitlab"
+                url:
+                  type: string
+                  format: uri
+                  description: Ссылка на объект во внешней системе.
+                referenceId:
+                  type: string
+                  description: Идентификатор объекта во внешней системе.
+                  example: "#342"
+                synced:
+                  type: boolean
+                  description: Признак того, что данные синхронизированы с внешней системой.
+            checklist:
+              type: array
+              description: Критерии приёмки (Definition of Done) задачи.
+              items: { $ref: "#/components/schemas/ChecklistItem" }
+            predecessors:
+              type: array
+              description: Задачи-предшественники, от которых зависит текущая задача.
+              items: { $ref: "#/components/schemas/TaskDependency" }
+            successors:
+              type: array
+              description: Задачи-последователи, зависящие от текущей задачи.
+              items: { $ref: "#/components/schemas/TaskDependency" }
+            commentsCount:
+              type: integer
+              description: Количество комментариев к задаче.
+
+    TaskCreateRequest:
+      type: object
+      description: Данные для создания новой задачи.
+      required: [title, startDate, endDate]
+      properties:
+        sprintId:
+          type: string
+          format: uuid
+          description: Идентификатор спринта, к которому привязывается задача.
+        parentTaskId:
+          type: string
+          format: uuid
+          description: Идентификатор родительской задачи (для создания подзадачи в WBS).
+        milestoneId:
+          type: string
+          format: uuid
+          description: Идентификатор контрольной точки (вехи), к которой ведёт задача.
+        title:
+          type: string
+          description: Название задачи.
+        description:
+          type: string
+          description: Описание задачи.
+        assigneeId:
+          type: string
+          format: uuid
+          description: Идентификатор назначаемого ответственного.
+        status:
+          allOf: [{ $ref: "#/components/schemas/TaskStatus" }]
+          description: Начальный статус задачи.
+        isMilestone:
+          type: boolean
+          default: false
+          description: Признак того, что создаваемая задача является вехой.
+        startDate:
+          type: string
+          format: date
+          description: Плановая дата начала задачи.
+        endDate:
+          type: string
+          format: date
+          description: Плановая дата окончания задачи.
+        weightPercent:
+          type: number
+          format: float
+          description: Вес задачи в общем прогрессе проекта, %.
+        predecessors:
+          type: array
+          description: Список связей с задачами-предшественниками, создаваемых одновременно с задачей.
+          items:
+            type: object
+            properties:
+              taskId:
+                type: string
+                format: uuid
+                description: Идентификатор задачи-предшественника.
+              type:
+                allOf: [{ $ref: "#/components/schemas/DependencyType" }]
+                description: Тип связи между задачами.
+              lagDays:
+                type: integer
+                default: 0
+                description: Задержка (лаг) в днях между задачами.
+
+    TaskUpdateRequest:
+      type: object
+      description: >
+        Набор полей задачи, доступных для частичного обновления (PATCH).
+        milestoneId различает отсутствие поля (не менять) от null (отвязать
+        от вехи) — как и actualDate у MilestoneCreateRequest.
+      properties:
+        sprintId:
+          type: string
+          format: uuid
+          description: Новый спринт задачи.
+        milestoneId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Новая контрольная точка задачи. Поле не передано — не менять,
+            null — отвязать от вехи, значение — привязать к вехе.
+        title:
+          type: string
+          description: Новое название задачи.
+        description:
+          type: string
+          description: Новое описание задачи.
+        assigneeId:
+          type: string
+          format: uuid
+          description: Идентификатор нового ответственного.
+        status:
+          allOf: [{ $ref: "#/components/schemas/TaskStatus" }]
+          description: Новый статус задачи.
+        startDate:
+          type: string
+          format: date
+          description: Новая дата начала задачи.
+        endDate:
+          type: string
+          format: date
+          description: Новая дата окончания задачи.
+        progressPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Новый процент выполнения задачи.
+        weightPercent:
+          type: number
+          format: float
+          description: Новый вес задачи в общем прогрессе проекта, %.
+
+    TaskDependency:
+      type: object
+      description: Связь (зависимость) между двумя задачами.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор связи.
+        predecessorTaskId:
+          type: string
+          format: uuid
+          description: Идентификатор задачи-предшественника.
+        successorTaskId:
+          type: string
+          format: uuid
+          description: Идентификатор задачи-последователя.
+        predecessorTitle:
+          type: string
+          description: Название задачи-предшественника (для отображения без дополнительного запроса).
+        successorTitle:
+          type: string
+          description: Название задачи-последователя (для отображения без дополнительного запроса).
+        type:
+          allOf: [{ $ref: "#/components/schemas/DependencyType" }]
+          description: Тип связи между задачами.
+        lagDays:
+          type: integer
+          default: 0
+          description: Задержка (лаг) в днях между задачами; может быть отрицательной (опережение).
+        isCritical:
+          type: boolean
+          default: false
+          description: Признак того, что связь лежит на критическом пути проекта.
+
+    TaskDependencyCreateRequest:
+      type: object
+      description: Данные для создания связи между текущей задачей и другой задачей.
+      required: [relatedTaskId, direction, type]
+      properties:
+        relatedTaskId:
+          type: string
+          format: uuid
+          description: Идентификатор задачи, с которой создаётся связь.
+        direction:
+          type: string
+          enum: [predecessor, successor]
+          description: >
+            Направление связи относительно текущей задачи: predecessor — связываемая задача
+            является предшественником, successor — последователем.
+        type:
+          allOf: [{ $ref: "#/components/schemas/DependencyType" }]
+          description: Тип создаваемой связи.
+        lagDays:
+          type: integer
+          default: 0
+          description: Задержка (лаг) в днях между задачами.
+
+    ChecklistItem:
+      type: object
+      description: Пункт чек-листа критериев приёмки (Definition of Done) задачи.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор пункта чек-листа.
+        taskId:
+          type: string
+          format: uuid
+          description: Идентификатор задачи, которой принадлежит пункт.
+        text:
+          type: string
+          description: Формулировка критерия приёмки.
+        isDone:
+          type: boolean
+          description: Признак выполнения критерия.
+
+    Comment:
+      type: object
+      description: Комментарий к задаче, оставленный участником команды.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор комментария.
+        taskId:
+          type: string
+          format: uuid
+          description: Идентификатор задачи, к которой относится комментарий.
+        author:
+          allOf: [{ $ref: "#/components/schemas/User" }]
+          description: Автор комментария.
+        text:
+          type: string
+          description: Текст комментария.
+        createdAt:
+          type: string
+          format: date-time
+          description: Дата и время публикации комментария.
+
+    HistoryEntry:
+      type: object
+      description: Запись в журнале изменений (аудите) задачи.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор записи истории.
+        taskId:
+          type: string
+          format: uuid
+          description: Идентификатор задачи, к которой относится запись.
+        actor:
+          allOf: [{ $ref: "#/components/schemas/User" }]
+          description: Пользователь, совершивший действие.
+        action:
+          type: string
+          description: Код совершённого действия.
+          example: "date_shifted"
+        field:
+          type: string
+          nullable: true
+          description: Изменённое поле задачи (если действие затронуло конкретное поле).
+          example: "endDate"
+        oldValue:
+          type: string
+          nullable: true
+          description: Значение поля до изменения.
+        newValue:
+          type: string
+          nullable: true
+          description: Значение поля после изменения.
+        createdAt:
+          type: string
+          format: date-time
+          description: Дата и время изменения.
+        source:
+          type: string
+          enum: [app, assistant]
+          description: >
+            Как сделано изменение: app — в приложении, assistant — нейронкой пользователя
+            через MCP с его подтверждения (подтвердил actor).
+          example: "assistant"
+        via:
+          type: string
+          nullable: true
+          description: Чем подключён ассистент — подпись личного ключа. null для правок в приложении.
+          example: "Claude Code, ноутбук"
+
+    McpToken:
+      type: object
+      description: Личный ключ для подключения ассистента. Сам ключ не возвращается.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Подпись ключа.
+          example: "Claude Code, ноутбук"
+        hint:
+          type: string
+          description: Последние 4 символа ключа — чтобы узнать его в списке.
+          example: "X7QK"
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Когда ключом пользовались в последний раз (с точностью до минуты).
+
+    McpTokenCreated:
+      type: object
+      description: Ответ на выпуск ключа — единственный, в котором есть сам ключ.
+      properties:
+        token: { $ref: "#/components/schemas/McpToken" }
+        secret:
+          type: string
+          description: "Ключ для заголовка Authorization: Bearer в настройках ассистента."
+          example: "tgn_MGREF2MTOQLR3J5J3UJXJTUICV"
+
+    StatusChangeStats:
+      type: object
+      description: >
+        Смены статусов задач проекта за последние periodDays дней и сколько из них сделано
+        через ассистента (MCP). Доля viaAssistant / total — метрика подключения к нейронкам.
+      properties:
+        periodDays:
+          type: integer
+          example: 30
+        total:
+          type: integer
+          example: 12
+        viaAssistant:
+          type: integer
+          example: 3
+
+    GanttChart:
+      type: object
+      description: Агрегированные данные для отрисовки диаграммы Ганта проекта.
+      properties:
+        projectId:
+          type: string
+          format: uuid
+          description: Идентификатор проекта.
+        scale:
+          type: string
+          enum: [days, weeks, months]
+          description: Масштаб шкалы времени, использованный при формировании ответа.
+        rangeStart:
+          type: string
+          format: date
+          description: Начало отображаемого диапазона дат.
+        rangeEnd:
+          type: string
+          format: date
+          description: Конец отображаемого диапазона дат.
+        criticalPathTaskIds:
+          type: array
+          description: Идентификаторы задач, входящих в критический путь проекта.
+          items:
+            type: string
+            format: uuid
+        tasks:
+          type: array
+          description: Задачи проекта, попадающие в отображаемый диапазон.
+          items: { $ref: "#/components/schemas/Task" }
+        dependencies:
+          type: array
+          description: Связи между задачами, отображаемые на диаграмме.
+          items: { $ref: "#/components/schemas/TaskDependency" }
+        milestones:
+          type: array
+          description: Контрольные точки проекта, отображаемые на диаграмме.
+          items: { $ref: "#/components/schemas/Milestone" }
+
+    ShiftSimulation:
+      type: object
+      description: Результат what-if моделирования либо фактического применения сдвига сроков задачи.
+      properties:
+        sourceTaskId:
+          type: string
+          format: uuid
+          description: Идентификатор задачи, инициировавшей сдвиг.
+        shiftDays:
+          type: integer
+          description: Величина сдвига в днях, применённая к исходной задаче.
+        algorithm:
+          type: string
+          description: Алгоритм расчёта каскадного сдвига сроков.
+          example: "Forward-Pass CPM"
+        affectedTasks:
+          type: array
+          description: Список задач, затронутых сдвигом, с датами до и после пересчёта.
+          items:
+            type: object
+            properties:
+              taskId:
+                type: string
+                format: uuid
+                description: Идентификатор затронутой задачи.
+              title:
+                type: string
+                description: Название затронутой задачи.
+              isCriticalPath:
+                type: boolean
+                description: Признак того, что задача лежит на критическом пути.
+              originalStartDate:
+                type: string
+                format: date
+                description: Дата начала задачи до пересчёта.
+              originalEndDate:
+                type: string
+                format: date
+                description: Дата окончания задачи до пересчёта.
+              newStartDate:
+                type: string
+                format: date
+                description: Дата начала задачи после пересчёта.
+              newEndDate:
+                type: string
+                format: date
+                description: Дата окончания задачи после пересчёта.
+              dependencyType:
+                allOf: [{ $ref: "#/components/schemas/DependencyType" }]
+                description: Тип связи, через которую сдвиг передался на эту задачу.
+        projectDeadlineImpact:
+          type: object
+          description: Влияние сдвига на общий срок сдачи проекта.
+          properties:
+            originalDeadline:
+              type: string
+              format: date
+              description: Плановый дедлайн проекта до сдвига.
+            newDeadline:
+              type: string
+              format: date
+              description: Прогнозируемый дедлайн проекта после сдвига.
+            deltaDays:
+              type: integer
+              description: Изменение срока сдачи проекта в днях (положительное — задержка).
+        bufferAvailableDays:
+          type: integer
+          description: Количество дней резерва, доступных для компенсации сдвига без переноса дедлайна.
+        applied:
+          type: boolean
+          description: Признак того, что изменения фактически применены — false для /simulate-shift, true для /apply-shift.
+
+    MemberWorkload:
+      type: object
+      description: Загруженность участника команды в рамках спринта.
+      properties:
+        user:
+          allOf: [{ $ref: "#/components/schemas/User" }]
+          description: Участник, для которого рассчитана загрузка.
+        sprintId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Спринт, для которого рассчитана загрузка (null — по всему проекту).
+        assignedHoursPerWeek:
+          type: number
+          format: float
+          description: Назначенная нагрузка участника, часов в неделю.
+          example: 44
+        weeklyHoursLimit:
+          type: integer
+          description: Лимит рабочих часов участника в неделю.
+          example: 40
+        utilizationPercent:
+          type: integer
+          description: Загрузка участника в процентах от лимита; значение >100 означает перегрузку.
+          example: 110
+
+    ProjectDashboard:
+      type: object
+      description: Сводные показатели состояния и рисков проекта для экрана «Обзор и Аналитика».
+      properties:
+        project:
+          allOf: [{ $ref: "#/components/schemas/ProjectSummary" }]
+          description: Краткая карточка проекта.
+        overallProgressPercent:
+          type: number
+          format: float
+          description: Общий процент выполнения проекта.
+          example: 64.3
+        progressDeltaPercent:
+          type: number
+          format: float
+          description: Изменение процента выполнения по сравнению с предыдущим периодом.
+          example: 4.2
+        milestonesClosed:
+          type: integer
+          description: Количество закрытых контрольных точек.
+          example: 18
+        milestonesTotal:
+          type: integer
+          description: Общее количество контрольных точек проекта.
+          example: 28
+        scheduleAdherence:
+          type: object
+          description: Соблюдение сроков проекта.
+          properties:
+            status:
+              type: string
+              enum: [on_track, at_risk, delayed]
+              description: >
+                Статус соблюдения сроков: on_track — в графике, at_risk — в зоне риска,
+                delayed — сорван срок.
+              example: at_risk
+            forecastDeviationDays:
+              type: integer
+              description: Прогнозируемое отклонение от плановых сроков, дней.
+              example: 2
+            projectBufferDays:
+              type: number
+              format: float
+              description: Остаток общего резерва (буфера) сроков проекта, дней.
+              example: 0.5
+        taskStatusBreakdown:
+          type: object
+          description: Разбивка задач проекта по статусам.
+          properties:
+            total:
+              type: integer
+              description: Общее количество задач проекта.
+              example: 28
+            done:
+              type: integer
+              description: Количество выполненных задач.
+              example: 18
+            inProgress:
+              type: integer
+              description: Количество задач в работе.
+              example: 4
+            planned:
+              type: integer
+              description: Количество предстоящих (запланированных) задач.
+              example: 5
+            overdue:
+              type: integer
+              description: Количество просроченных задач.
+              example: 1
+        teamVelocity:
+          type: object
+          description: Скорость выполнения задач командой.
+          properties:
+            tasksPerWeek:
+              type: number
+              format: float
+              description: Среднее количество завершаемых задач в неделю.
+              example: 4.8
+        nearestMilestones:
+          type: array
+          description: Ближайшие контрольные точки проекта.
+          items: { $ref: "#/components/schemas/Milestone" }
+        risks:
+          type: array
+          description: Активные риски проекта.
+          items:
+            type: object
+            properties:
+              severity:
+                type: string
+                enum: [critical, high, medium, low]
+                description: Серьёзность риска.
+              title:
+                type: string
+                description: Краткое название риска.
+              description:
+                type: string
+                description: Подробное описание риска и его причины.
+              relatedTaskId:
+                type: string
+                format: uuid
+                nullable: true
+                description: Задача, с которой связан риск (если применимо).
+              impactDays:
+                type: integer
+                nullable: true
+                description: Оценка влияния риска на срок проекта, дней.
+        attentionTasks:
+          type: array
+          description: Задачи, требующие внимания (отклонение от плана).
+          items:
+            type: object
+            properties:
+              task:
+                allOf: [{ $ref: "#/components/schemas/Task" }]
+                description: Задача, требующая внимания.
+              deviationDays:
+                type: integer
+                description: Отклонение задачи от плана в днях (отрицательное — отставание).
+        teamWorkload:
+          type: array
+          description: Загрузка участников команды текущего спринта.
+          items: { $ref: "#/components/schemas/MemberWorkload" }
+        statusChanges:
+          allOf: [{ $ref: "#/components/schemas/StatusChangeStats" }]
+          description: Как часто обновляют статусы задач и какая доля обновлений — через ассистента.
+
