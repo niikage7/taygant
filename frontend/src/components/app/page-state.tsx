@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleAlert, Inbox, LoaderCircle, PlugZap } from "lucide-react";
+import { CircleAlert, Inbox, ListTodo, LoaderCircle, PlugZap } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,21 @@ export function PageError({ error }: { error: unknown }) {
         </p>
         <p className="max-w-md text-[13px] text-ink-muted">
           {toUserMessage(error, {}, "Неизвестная ошибка")}
+        </p>
+      </CardBody>
+    </Card>
+  );
+}
+
+/** Пустое состояние: в проекте ещё нет задач. */
+export function EmptyProjectTasks() {
+  return (
+    <Card>
+      <CardBody className="flex flex-col items-center gap-3 py-16 text-center">
+        <ListTodo className="size-6 text-ink-faint" />
+        <p className="text-sm font-semibold text-ink">Задач пока нет</p>
+        <p className="max-w-md text-[13px] text-ink-muted">
+          Добавьте первую задачу — календарно-сетевой график появится автоматически.
         </p>
       </CardBody>
     </Card>
