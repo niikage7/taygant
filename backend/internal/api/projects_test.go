@@ -179,6 +179,18 @@ func TestDeleteProjectArchivesInsteadOfRemoving(t *testing.T) {
 	if got.Status != "archived" {
 		t.Fatalf("после DELETE статус %q, ожидался archived", got.Status)
 	}
+
+	// Архивирование — это «удаление» с точки зрения пользователя: из общего
+	// списка проект пропадает, но остаётся доступен по явному фильтру.
+	list := decode[[]projectJSON](t, get(t, owner.Token, "/projects").want(t, http.StatusOK))
+	if len(list) != 0 {
+		t.Fatalf("архивный проект остался в общем списке: %+v", list)
+	}
+
+	archived := decode[[]projectJSON](t, get(t, owner.Token, "/projects?status=archived").want(t, http.StatusOK))
+	if len(archived) != 1 || archived[0].ID != project.ID {
+		t.Fatalf("список status=archived = %+v, ожидался единственный архивный проект", archived)
+	}
 }
 
 // Проект и стартовая команда создаются одним запросом (шаг 2 мастера).

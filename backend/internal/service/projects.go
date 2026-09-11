@@ -81,6 +81,10 @@ func ComputeMetrics(ctx context.Context, db *gorm.DB, project models.Project) (M
 }
 
 // List возвращает проекты, в команде которых состоит пользователь.
+//
+// Архивные проекты — логически удалённые — по умолчанию скрыты: без этого
+// DELETE /projects/{id} не убирал бы проект из общего списка. Явный
+// status=archived возвращает их (например, для раздела «Архив»).
 func (s *Projects) List(ctx context.Context, userID uuid.UUID, status models.ProjectStatus, search string) ([]models.Project, error) {
 	query := s.db.WithContext(ctx).
 		Model(&models.Project{}).
@@ -90,6 +94,8 @@ func (s *Projects) List(ctx context.Context, userID uuid.UUID, status models.Pro
 
 	if status != "" {
 		query = query.Where("projects.status = ?", status)
+	} else {
+		query = query.Where("projects.status <> ?", models.ProjectStatusArchived)
 	}
 	if search = strings.TrimSpace(search); search != "" {
 		pattern := "%" + escapeLikePattern(search) + "%"
