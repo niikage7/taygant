@@ -34,7 +34,8 @@ var demoUsers = []models.User{
 }
 
 // Seed наполняет пустую БД демонстрационными данными: командой, проектом,
-// спринтами, вехами и задачами с зависимостями.
+// спринтами, вехами и задачами с зависимостями, а также проектами витрины
+// возможностей (см. seed_showcase.go).
 //
 // Пользователи и демо-проект проверяются на идемпотентность раздельно (см.
 // demoProjectCode): один общий счётчик "есть хоть один пользователь" не подошёл
@@ -44,7 +45,10 @@ func Seed(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	return seedDemoProject(db, users)
+	if err := seedDemoProject(db, users); err != nil {
+		return err
+	}
+	return seedShowcase(db)
 }
 
 // seedUsers создаёт демо-команду, если таблица пользователей пуста, и в любом
