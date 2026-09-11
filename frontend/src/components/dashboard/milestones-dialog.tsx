@@ -1,7 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { CircleCheck, Flag, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { CircleCheck, Flag, Link2, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -10,16 +10,18 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LinkTasksDialog } from "@/components/task/link-tasks-dialog";
 import {
   useCreateMilestone,
   useDeleteMilestone,
   useMilestones,
+  useTasks,
   useUpdateMilestone,
 } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
 import { formatDate } from "@/lib/format";
 import { MILESTONE_STATUS_META } from "@/lib/task-status";
-import type { Milestone } from "@/types";
+import type { Milestone, Task } from "@/types";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -40,6 +42,7 @@ export function MilestonesDialog({
 }) {
   const [open, setOpen] = useState(false);
   const milestones = useMilestones(projectId);
+  const tasks = useTasks(projectId);
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -50,10 +53,10 @@ export function MilestonesDialog({
         <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100vh-2rem)] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-card bg-surface p-6 shadow-popover">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <Dialog.Title className="text-[15px] font-semibold text-ink">
+              <Dialog.Title className="text-15 font-semibold text-ink">
                 Контрольные точки проекта
               </Dialog.Title>
-              <Dialog.Description className="mt-1 text-[13px] text-ink-muted">
+              <Dialog.Description className="mt-1 text-13 text-ink-muted">
                 Обязательства проекта по датам. Задачи к ним не привязываются — для
                 этого используйте спринты или задачу-веху со связями.
               </Dialog.Description>
@@ -71,17 +74,21 @@ export function MilestonesDialog({
 
 
             {milestones.isPending ? (
-              <p className="py-6 text-center text-[13px] text-ink-muted">
+              <p className="py-6 text-center text-13 text-ink-muted">
                 Загружаем вехи…
               </p>
             ) : (milestones.data?.length ?? 0) === 0 ? (
-              <p className="py-6 text-center text-[13px] text-ink-muted">
+              <p className="py-6 text-center text-13 text-ink-muted">
                 Контрольных точек пока нет — добавьте первую.
               </p>
             ) : (
               <ul className="space-y-2 border-t border-line pt-4">
                 {milestones.data?.map((milestone) => (
-                  <MilestoneRow key={milestone.id} milestone={milestone} />
+                  <MilestoneRow
+                    key={milestone.id}
+                    milestone={milestone}
+                    projectTasks={tasks.data ?? []}
+                  />
                 ))}
               </ul>
             )}
@@ -170,7 +177,13 @@ function MilestoneForm({ projectId }: { projectId: string }) {
   );
 }
 
-function MilestoneRow({ milestone }: { milestone: Milestone }) {
+function MilestoneRow({
+  milestone,
+  projectTasks,
+}: {
+  milestone: Milestone;
+  projectTasks: Task[];
+}) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(milestone.name);
   const [plannedDate, setPlannedDate] = useState(milestone.plannedDate);
@@ -240,13 +253,13 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
       )}
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-ink">
+        <p className="truncate text-13 font-medium text-ink">
           {milestone.code ? (
             <span className="font-mono text-ink-faint">{milestone.code} </span>
           ) : null}
           {milestone.name}
         </p>
-        <p className="mt-0.5 font-mono text-[11px] text-ink-faint">
+        <p className="mt-0.5 font-mono text-2xs text-ink-faint">
           {formatDate(milestone.plannedDate)}
           {milestone.actualDate
             ? ` · достигнута ${formatDate(milestone.actualDate)}`
@@ -257,7 +270,7 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
       </div>
 
       {milestone.tasksTotal > 0 ? (
-        <span className="shrink-0 font-mono text-[11px] text-ink-faint">
+        <span className="shrink-0 font-mono text-2xs text-ink-faint">
           {milestone.tasksDone}/{milestone.tasksTotal}
         </span>
       ) : null}
@@ -299,6 +312,22 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
           <CircleCheck className="size-3.5" />
         )}
       </button>
+
+      <LinkTasksDialog
+        milestoneId={milestone.id}
+        milestoneName={milestone.name}
+        candidates={projectTasks}
+        trigger={
+          <button
+            type="button"
+            aria-label={`Привязать задачи к «${milestone.name}»`}
+            title="Привязать задачи"
+            className="rounded-control p-1 text-ink-faint transition-colors hover:text-brand focus-visible:focus-ring"
+          >
+            <Link2 className="size-3.5" />
+          </button>
+        }
+      />
 
       <button
         type="button"

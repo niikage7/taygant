@@ -42,7 +42,7 @@ export function Avatar({
       title={title ?? fullName}
       aria-hidden
       className={cn(
-        "inline-flex size-6 shrink-0 items-center justify-center rounded-control text-[10px] font-bold",
+        "inline-flex size-6 shrink-0 items-center justify-center rounded-control text-3xs font-bold",
         toneOf(fullName),
         className,
       )}

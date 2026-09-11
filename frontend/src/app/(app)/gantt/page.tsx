@@ -2,7 +2,7 @@
 
 import { CalendarDays, CircleCheck, Waypoints } from "lucide-react";
 
-import { EmptyProjects, PageError, PageLoading } from "@/components/app/page-state";
+import { EmptyProjectTasks, EmptyProjects, PageError, PageLoading } from "@/components/app/page-state";
 import { GanttBoard } from "@/components/gantt/gantt-board";
 import { Badge } from "@/components/ui/badge";
 import { useCurrentProject } from "@/data/current-project";
@@ -40,7 +40,7 @@ export default function GanttPage() {
             </Badge>
           ) : null}
         </h1>
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-ink-muted">
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-13 text-ink-muted">
           <span className="flex items-center gap-1.5">
             <CalendarDays className="size-3.5" />
             {formatDate(project.data.startDate)} — {formatDate(project.data.deadline)} (
@@ -60,7 +60,7 @@ export default function GanttPage() {
       </div>
 
       {tasks.length === 0 ? (
-        <PageLoading label="В проекте пока нет задач — добавьте первую." />
+        <EmptyProjectTasks />
       ) : (
         <GanttBoard
           project={project.data}

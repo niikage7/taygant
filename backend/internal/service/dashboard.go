@@ -9,7 +9,6 @@ import (
 	"gorm.io/gorm"
 
 	"taygant_backend/internal/models"
-	"taygant_backend/internal/schedule"
 )
 
 // Dashboard — сводные показатели состояния и рисков проекта.
@@ -75,6 +74,9 @@ type DashboardResult struct {
 	Risks                []Risk
 	AttentionTasks       []AttentionTask
 	TeamWorkload         []MemberWorkload
+	// StatusChanges — сколько смен статуса за последние 30 дней сделано
+	// через ассистента (MCP): метрика подключения к нейронкам из docs/mcp.md.
+	StatusChanges StatusChangeStats
 }
 
 // bufferCriticalThresholdDays — ниже этого остатка резерва проект считается
@@ -114,6 +116,10 @@ func (s *Dashboard) Get(ctx context.Context, projectID uuid.UUID) (DashboardResu
 	if err != nil {
 		return DashboardResult{}, err
 	}
+	statusChanges, err := statusChangeStats(ctx, s.db, projectID)
+	if err != nil {
+		return DashboardResult{}, err
+	}
 
 	breakdown := TaskStatusBreakdown{Total: len(tasks)}
 	var attention []AttentionTask
@@ -139,11 +145,11 @@ func (s *Dashboard) Get(ctx context.Context, projectID uuid.UUID) (DashboardResu
 		}
 	}
 
-	forecastDeviation := 0
+	forecastDeviation, projectBuffer := 0, 0
 	if !summary.ComputedFinish.IsZero() {
 		forecastDeviation = project.Deadline.DaysUntil(summary.ComputedFinish)
+		projectBuffer = projectBufferDays(forecastDeviation)
 	}
-	projectBuffer := minSlack(summary)
 
 	adherence := ScheduleAdherence{
 		ForecastDeviationDays: forecastDeviation,
@@ -184,6 +190,7 @@ func (s *Dashboard) Get(ctx context.Context, projectID uuid.UUID) (DashboardResu
 		Risks:                risks,
 		AttentionTasks:       attention,
 		TeamWorkload:         workload,
+		StatusChanges:        statusChanges,
 	}, nil
 }
 
@@ -248,19 +255,17 @@ func adherenceStatus(forecastDeviationDays, projectBufferDays int) string {
 	}
 }
 
-// minSlack — наименьший резерв среди всех задач проекта: тот самый "остаток
-// общего резерва сроков проекта" из спецификации. Пустой граф (проект без
-// задач) резерва не имеет — возвращаем 0, а не панику на пустой карте.
-func minSlack(summary schedule.Summary) int {
-	min := 0
-	first := true
-	for _, r := range summary.Tasks {
-		if first || r.SlackDays < min {
-			min = r.SlackDays
-			first = false
-		}
-	}
-	return min
+// projectBufferDays — «остаток общего резерва сроков проекта» из спецификации:
+// сколько дней лежит между прогнозом окончания (CPM) и дедлайном. Проект,
+// который уже не успевает, резерва не имеет — 0, отставание показывает
+// forecastDeviationDays.
+//
+// Раньше здесь брался наименьший slack среди задач, но CPM считает slack от
+// прогнозного финиша, а не от дедлайна, — у задач критического пути он всегда
+// 0. Резерв выходил нулевым у любого проекта, и даже проект с месячным запасом
+// попадал в at_risk.
+func projectBufferDays(forecastDeviationDays int) int {
+	return max(0, -forecastDeviationDays)
 }
 
 // tasksPerWeek — грубая оценка скорости команды: сколько задач в среднем

@@ -7,20 +7,14 @@ import { useState, type ReactNode } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  useAssignTasksToMilestone,
-  useCreateTask,
-  useProjectMembers,
-} from "@/data/queries";
+import { useCreateTask, useMilestones, useProjectMembers } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
 import { cn } from "@/lib/utils";
-import type { Task } from "@/types";
 
 const toIso = (date: Date) => format(date, "yyyy-MM-dd");
 
@@ -33,11 +27,9 @@ const toIso = (date: Date) => format(date, "yyyy-MM-dd");
  */
 export function CreateTaskDialog({
   projectId,
-  projectTasks,
   trigger,
 }: {
   projectId: string;
-  projectTasks: Task[];
   /** Кнопка-триггер: в шапке это «+ Задача», внизу таблицы — строка-подсказка. */
   trigger: ReactNode;
 }) {
@@ -49,14 +41,12 @@ export function CreateTaskDialog({
   const [endDate, setEndDate] = useState(() => toIso(addDays(new Date(), 5)));
   const [isMilestone, setIsMilestone] = useState(false);
   const [milestoneId, setMilestoneId] = useState("");
-  const [linkedTaskIds, setLinkedTaskIds] = useState<string[]>([]);
 
   const members = useProjectMembers(projectId);
   const createTask = useCreateTask(projectId);
-  const assignTasks = useAssignTasksToMilestone();
 
-  const milestoneTasks = projectTasks.filter((task) => task.isMilestone);
-  const plainTasks = projectTasks.filter((task) => !task.isMilestone);
+  const milestones = useMilestones(projectId);
+  const projectMilestones = milestones.data ?? [];
 
   const validRange = endDate >= startDate;
   const canSubmit = title.trim().length > 0 && validRange && !createTask.isPending;
@@ -66,7 +56,6 @@ export function CreateTaskDialog({
     setDescription("");
     setAssigneeId("");
     setMilestoneId("");
-    setLinkedTaskIds([]);
   }
 
   function submit() {
@@ -80,15 +69,10 @@ export function CreateTaskDialog({
         // У вехи нулевая длительность — конец совпадает с началом.
         endDate: isMilestone ? startDate : endDate,
         isMilestone,
-        milestoneId: !isMilestone && milestoneId ? milestoneId : undefined,
+        milestoneId: milestoneId || undefined,
       },
       {
-        onSuccess: (created) => {
-          // Веху привязываем к задачам после создания: milestoneId проставляется
-          // самим задачам, а до создания вехи её идентификатора ещё нет.
-          if (isMilestone && linkedTaskIds.length > 0) {
-            assignTasks.mutate({ taskIds: linkedTaskIds, milestoneId: created.id });
-          }
+        onSuccess: () => {
           setOpen(false);
           reset();
         },
@@ -111,10 +95,10 @@ export function CreateTaskDialog({
         <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100vh-2rem)] w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-card bg-surface p-6 shadow-popover">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <Dialog.Title className="text-[15px] font-semibold text-ink">
+              <Dialog.Title className="text-15 font-semibold text-ink">
                 Новая задача
               </Dialog.Title>
-              <Dialog.Description className="mt-1 text-[13px] text-ink-muted">
+              <Dialog.Description className="mt-1 text-13 text-ink-muted">
                 Задача появится в реестре и на диаграмме Ганта.
               </Dialog.Description>
             </div>
@@ -213,7 +197,7 @@ export function CreateTaskDialog({
               ) : null}
             </div>
 
-            {!isMilestone && milestoneTasks.length > 0 ? (
+            {projectMilestones.length > 0 ? (
               <div className="space-y-1.5">
                 <Label htmlFor="task-milestone">Контрольная точка</Label>
                 <Select
@@ -222,47 +206,13 @@ export function CreateTaskDialog({
                   onChange={(event) => setMilestoneId(event.target.value)}
                 >
                   <option value="">Вне вех</option>
-                  {milestoneTasks.map((task) => (
-                    <option key={task.id} value={task.id}>
-                      {task.title}
+                  {projectMilestones.map((milestone) => (
+                    <option key={milestone.id} value={milestone.id}>
+                      {milestone.code ? `${milestone.code} · ` : ""}
+                      {milestone.name}
                     </option>
                   ))}
                 </Select>
-              </div>
-            ) : null}
-
-            {isMilestone && plainTasks.length > 0 ? (
-              <div className="space-y-2">
-                <div className="flex items-baseline justify-between gap-3">
-                  <Label>Задачи, ведущие к вехе</Label>
-                  <span className="text-xs text-ink-faint">
-                    {linkedTaskIds.length > 0
-                      ? `выбрано: ${linkedTaskIds.length}`
-                      : "можно несколько"}
-                  </span>
-                </div>
-                <ul className="max-h-44 space-y-1 overflow-y-auto rounded-control border border-line p-2">
-                  {plainTasks.map((task) => (
-                    <li key={task.id}>
-                      <label className="flex cursor-pointer items-center gap-2.5 rounded-control px-2 py-1.5 hover:bg-surface-muted">
-                        <Checkbox
-                          checked={linkedTaskIds.includes(task.id)}
-                          onCheckedChange={(next) =>
-                            setLinkedTaskIds((current) =>
-                              next === true
-                                ? [...current, task.id]
-                                : current.filter((id) => id !== task.id),
-                            )
-                          }
-                        />
-                        <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
-                          <span className="font-mono text-ink-faint">#{task.wbsNumber}</span>{" "}
-                          {task.title}
-                        </span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
               </div>
             ) : null}
 
@@ -324,7 +274,7 @@ function TypeOption({
       <span className="min-w-0">
         <span
           className={cn(
-            "block text-[13px] font-semibold",
+            "block text-13 font-semibold",
             active ? "text-brand" : "text-ink",
           )}
         >

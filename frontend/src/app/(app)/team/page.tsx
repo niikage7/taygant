@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/app/page-header";
 import { EmptyProjects, PageError, PageLoading } from "@/components/app/page-state";
 import { TeamManager } from "@/components/project/team-manager";
 import { useCurrentProject } from "@/data/current-project";
@@ -19,19 +20,12 @@ export default function TeamPage() {
 
   if (error) return <PageError error={error} />;
   if (isEmpty) return <EmptyProjects />;
-  if (project.error) return <PageError error={project.error} />;
+  if (project.error) return <PageError error={project.error} onRetry={project.refetch} />;
   if (!projectId || !project.data) return <PageLoading />;
 
   return (
     <div className="mx-auto max-w-[1000px] space-y-4">
-      <div>
-        <p className="font-mono text-xs tracking-wide text-ink-faint uppercase">
-          Проект #{project.data.code}
-        </p>
-        <h1 className="mt-1.5 text-2xl leading-tight font-bold tracking-tight text-ink">
-          Состав команды и права доступа
-        </h1>
-      </div>
+      <PageHeader eyebrow={`Проект #${project.data.code}`} title="Состав команды и права доступа" />
 
       <TeamManager
         projectId={projectId}

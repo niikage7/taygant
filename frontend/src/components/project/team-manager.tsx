@@ -102,7 +102,7 @@ export function TeamManager({
         <CardHeader className="items-start">
           <div>
             <CardTitle>Команда проекта</CardTitle>
-            <p className="mt-0.5 text-[13px] text-ink-muted">
+            <p className="mt-0.5 text-13 text-ink-muted">
               {projectName}: роли и уровни доступа участников.
             </p>
           </div>
@@ -114,14 +114,14 @@ export function TeamManager({
 
         <CardBody className="space-y-4">
           {!canManage ? (
-            <p className="rounded-control bg-surface-subtle px-3 py-2.5 text-[13px] text-ink-muted">
+            <p className="rounded-control bg-surface-subtle px-3 py-2.5 text-13 text-ink-muted">
               Состав команды доступен только для просмотра. Управлять участниками может
               владелец проекта с полным доступом.
             </p>
           ) : null}
 
           {members.isPending ? (
-            <p className="py-6 text-center text-[13px] text-ink-muted">Загружаем команду…</p>
+            <p className="py-6 text-center text-13 text-ink-muted">Загружаем команду…</p>
           ) : members.isError ? (
             <Alert tone="danger">
               {toUserMessage(members.error, {}, "Не удалось загрузить состав команды")}
@@ -271,7 +271,7 @@ function MemberRow({
 
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-2">
-          <span className="truncate text-[13px] font-semibold text-ink">
+          <span className="truncate text-13 font-semibold text-ink">
             {member.user.fullName}
           </span>
           {isSelf ? (

@@ -55,7 +55,7 @@ export function CascadeSimulation({
               <div className="flex items-center gap-3 rounded-control border border-line bg-surface px-3 py-2.5">
                 <span
                   className={cn(
-                    "flex size-6 shrink-0 items-center justify-center rounded-control text-[11px] font-bold",
+                    "flex size-6 shrink-0 items-center justify-center rounded-control text-2xs font-bold",
                     task.isCriticalPath
                       ? index === 0
                         ? "bg-brand text-white"
@@ -67,7 +67,7 @@ export function CascadeSimulation({
                 </span>
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold text-ink">{task.title}</p>
+                  <p className="truncate text-13 font-semibold text-ink">{task.title}</p>
                   <p className="truncate text-xs text-ink-faint">
                     {task.isCriticalPath ? "Критический путь" : `Связь ${task.dependencyType}`}{" "}
                     · Исходно: {formatDate(task.originalStartDate)} —{" "}
@@ -76,11 +76,11 @@ export function CascadeSimulation({
                 </div>
 
                 <span className="flex shrink-0 items-center gap-2">
-                  <span className="font-mono text-[11px] text-ink-faint line-through">
+                  <span className="font-mono text-2xs text-ink-faint line-through">
                     {formatDate(task.originalEndDate)}
                   </span>
                   <ArrowRight className="size-3.5 text-ink-faint" />
-                  <span className="rounded-control bg-danger-tint px-2 py-1 font-mono text-[11px] font-semibold text-danger">
+                  <span className="rounded-control bg-danger-tint px-2 py-1 font-mono text-2xs font-semibold text-danger">
                     {formatDate(task.newEndDate)}
                   </span>
                 </span>
@@ -104,7 +104,7 @@ export function CascadeSimulation({
               )}
             />
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold text-ink">
+              <p className="text-13 font-semibold text-ink">
                 Итоговое влияние на дату сдачи проекта:
               </p>
               {!deadlineMoved ? (

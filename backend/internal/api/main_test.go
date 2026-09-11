@@ -358,6 +358,8 @@ type historyJSON struct {
 	OldValue *string  `json:"oldValue"`
 	NewValue *string  `json:"newValue"`
 	Actor    userJSON `json:"actor"`
+	Source   string   `json:"source"`
+	Via      *string  `json:"via"`
 }
 
 type sprintJSON struct {

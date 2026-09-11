@@ -16,6 +16,16 @@ const (
 	HistoryActionCommented     = "commented"
 )
 
+// Каналы, через которые сделано изменение. Тоже часть контракта с фронтом:
+// по ним карточка задачи показывает пометку «через ассистента».
+const (
+	// HistorySourceApp — правка в веб-приложении.
+	HistorySourceApp = "app"
+	// HistorySourceAssistant — правка нейронкой пользователя через MCP,
+	// с его подтверждением. Доля таких смен статуса — метрика подключения.
+	HistorySourceAssistant = "assistant"
+)
+
 // TaskHistoryEntry — запись аудита по задаче.
 //
 // Хранит одно изменение одного поля: так журнал читается как список
@@ -37,6 +47,15 @@ type TaskHistoryEntry struct {
 	Field    *string `gorm:"type:varchar(60)"`
 	OldValue *string `gorm:"type:text"`
 	NewValue *string `gorm:"type:text"`
+
+	// Source — канал изменения (HistorySource*). Значение по умолчанию в БД
+	// нужно уже существующим записям: при миграции колонка добавляется к
+	// заполненной таблице, и все старые правки сделаны в приложении.
+	Source string `gorm:"type:varchar(20);not null;default:app"`
+	// Via — чем именно воспользовались: для ассистента это имя личного ключа.
+	// Хранится строкой, а не ссылкой на ключ: отзыв ключа не должен
+	// обезличивать уже сделанные им записи.
+	Via string `gorm:"type:varchar(120);not null;default:''"`
 }
 
 // TableName фиксирует имя таблицы.

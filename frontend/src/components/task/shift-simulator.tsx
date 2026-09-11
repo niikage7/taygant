@@ -51,7 +51,7 @@ export function ShiftSimulator({
         <CardBody className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <CardLabel>Моделирование сдвига</CardLabel>
-            <p className="mt-1.5 text-[13px] text-ink-muted">
+            <p className="mt-1.5 text-13 text-ink-muted">
               Рассчитайте, как перенос сроков задачи отразится на связанных задачах и дате сдачи
               проекта.
             </p>

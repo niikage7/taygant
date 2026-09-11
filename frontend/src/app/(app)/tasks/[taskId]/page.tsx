@@ -1,13 +1,21 @@
 "use client";
 
-import { Check, ChevronRight, History, MessageSquare, Waypoints, X } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  History,
+  MessageSquare,
+  Trash2,
+  Waypoints,
+  X,
+} from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { use } from "react";
 
 import { PageError, PageLoading } from "@/components/app/page-state";
 import { DependencyGraph } from "@/components/task/dependency-graph";
-import { MilestoneTasksCard } from "@/components/task/milestone-tasks-card";
 import { ShareTaskButton } from "@/components/task/share-task-button";
 import { ShiftSimulator } from "@/components/task/shift-simulator";
 import { TaskComments } from "@/components/task/task-comments";
@@ -16,10 +24,11 @@ import { TaskParams } from "@/components/task/task-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useCurrentProject } from "@/data/current-project";
 import { useProjectAccess } from "@/data/project-access";
 import { Alert } from "@/components/ui/alert";
-import { useProject, useTaskDetail, useTasks, useUpdateTask } from "@/data/queries";
+import { useDeleteTask, useProject, useTaskDetail, useTasks, useUpdateTask } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
 import type { TaskUpdateRequest } from "@/types";
 import { TASK_STATUS_META } from "@/lib/task-status";
@@ -33,6 +42,8 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
   const projectTasks = useTasks(projectId);
   const updateTask = useUpdateTask(taskId);
   const access = useProjectAccess();
+  const deleteTask = useDeleteTask(taskId);
+  const router = useRouter();
 
   const [tab, setTab] = useState<"links" | "history" | "comments">("links");
   const [draft, setDraft] = useState<TaskUpdateRequest | null>(null);
@@ -54,7 +65,7 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
         <CardBody className="flex flex-wrap items-center justify-between gap-3 py-3">
           <nav
             aria-label="Хлебные крошки"
-            className="flex min-w-0 flex-wrap items-center gap-1.5 text-[13px] text-ink-muted"
+            className="flex min-w-0 flex-wrap items-center gap-1.5 text-13 text-ink-muted"
           >
             <Link
               href="/overview"
@@ -113,6 +124,31 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
 
             <div className="flex items-center gap-2">
               <ShareTaskButton />
+              {canEdit ? (
+                <ConfirmDialog
+                  title="Удалить задачу?"
+                  description={
+                    <>
+                      Задача «{detail.title}» будет удалена вместе со связями,
+                      комментариями и критериями приёмки. Действие необратимо.
+                    </>
+                  }
+                  confirmLabel="Удалить задачу"
+                  pendingLabel="Удаляем…"
+                  isPending={deleteTask.isPending}
+                  error={deleteTask.error}
+                  onConfirm={() =>
+                    deleteTask.mutate(undefined, {
+                      onSuccess: () => router.push("/gantt"),
+                    })
+                  }
+                  trigger={
+                    <Button variant="secondary" aria-label="Удалить задачу">
+                      <Trash2 />
+                    </Button>
+                  }
+                />
+              ) : null}
               {canEdit ? (
                 <Button
                   onClick={() => draft && updateTask.mutate(draft)}
@@ -185,12 +221,7 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
 
           {tab === "links" ? (
             <>
-              {detail.isMilestone ? (
-                <MilestoneTasksCard
-                  milestoneTaskId={taskId}
-                  projectTasks={projectTasks.data ?? []}
-                />
-              ) : null}
+
               <DependencyGraph
                 taskId={taskId}
                 taskNumber={detail.wbsNumber ?? ""}
@@ -234,7 +265,7 @@ function TabButton({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 rounded-control px-3 py-2 text-[13px] transition-colors focus-visible:focus-ring",
+        "flex items-center gap-2 rounded-control px-3 py-2 text-13 transition-colors focus-visible:focus-ring",
         active
           ? "bg-brand-tint font-medium text-brand"
           : "text-ink-muted hover:bg-surface-muted hover:text-ink",

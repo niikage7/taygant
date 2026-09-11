@@ -1,6 +1,7 @@
 export * from "./http-client";
 export * from "./auth.service";
 export * from "./users.service";
+export * from "./mcp-tokens.service";
 export * from "./projects.service";
 export * from "./members.service";
 export * from "./sprints.service";

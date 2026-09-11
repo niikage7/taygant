@@ -33,6 +33,7 @@ type API struct {
 	dashboard    *service.Dashboard
 	workload     *service.Workload
 	export       *service.Export
+	mcpTokens    *service.MCPTokens
 }
 
 // New собирает HTTP-слой поверх готового подключения к БД.
@@ -64,6 +65,7 @@ func New(db *gorm.DB, cfg config.Config) *API {
 		dashboard:    service.NewDashboard(db, tasksSvc, milestonesSvc, workloadSvc),
 		workload:     workloadSvc,
 		export:       service.NewExport(db, tasksSvc, milestonesSvc),
+		mcpTokens:    service.NewMCPTokens(db),
 	}
 }
 
@@ -80,6 +82,7 @@ func (a *API) Register(app *fiber.App, middlewares ...fiber.Handler) {
 	protected := v1.Group("", a.requireAuth)
 
 	a.registerUsersRoutes(protected)
+	a.registerMCPTokensRoutes(protected)
 	a.registerProjectsRoutes(protected)
 	a.registerMembersRoutes(protected)
 	a.registerSprintsRoutes(protected)

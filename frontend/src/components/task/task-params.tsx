@@ -23,7 +23,7 @@ import { TASK_STATUS_META } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
 import type { Project, TaskDetail, TaskStatus, TaskUpdateRequest } from "@/types";
 
-const SECTION = "text-[11px] font-semibold tracking-wider text-ink-faint uppercase";
+const SECTION = "text-2xs font-semibold tracking-wider text-ink-faint uppercase";
 
 /** Левая колонка редактора: паспорт задачи, прогресс, описание и DoD. */
 export function TaskParams({
@@ -134,7 +134,7 @@ export function TaskParams({
           <div className="mt-2 flex items-center justify-between gap-3 rounded-control bg-surface-muted px-3 py-2.5">
             <span className="flex min-w-0 items-center gap-2">
               <Building2 className="size-4 shrink-0 text-brand" />
-              <span className="truncate text-[13px] font-medium text-ink">{project.name}</span>
+              <span className="truncate text-13 font-medium text-ink">{project.name}</span>
             </span>
             <span className="shrink-0 text-xs text-ink-faint">Релиз 2.1</span>
           </div>
@@ -198,7 +198,7 @@ export function TaskParams({
               />
             </div>
           </div>
-          <p className="mt-3 flex items-baseline justify-between gap-3 text-[13px]">
+          <p className="mt-3 flex items-baseline justify-between gap-3 text-13">
             <span className="text-ink-muted">Длительность задачи:</span>
             <span className="text-right font-semibold text-ink">
               {task.durationCalendarDays} календарных дней ({task.durationWorkingDays} раб.)
@@ -244,10 +244,10 @@ export function TaskParams({
                 onChange={(event) => setProgress(Number(event.target.value))}
                 className="h-8 w-20"
               />
-              <span className="text-[13px] text-ink-muted">%</span>
+              <span className="text-13 text-ink-muted">%</span>
             </span>
           </div>
-          <p className="mt-3 flex items-baseline justify-between gap-3 text-[13px]">
+          <p className="mt-3 flex items-baseline justify-between gap-3 text-13">
             <span className="text-ink-muted">План на сегодня: {plannedProgressPercent}%</span>
             <span
               className={cn(
@@ -307,7 +307,7 @@ export function TaskParams({
                   />
                   <span
                     className={cn(
-                      "min-w-0 flex-1 text-[13px] leading-snug",
+                      "min-w-0 flex-1 text-13 leading-snug",
                       item.isDone ? "text-ink-faint line-through" : "text-ink",
                     )}
                   >

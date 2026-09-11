@@ -17,6 +17,12 @@ tags:
     description: Аутентификация и выдача токенов
   - name: Users
     description: Пользователи платформы
+  - name: McpTokens
+    description: >
+      Личные ключи для подключения нейронки пользователя (Claude Code, Cursor…) к MCP-серверу
+      приложения. Сам MCP-сервер живёт вне этого API — по адресу /mcp (через фронтенд —
+      /backend/mcp): это протокол Model Context Protocol поверх Streamable HTTP, вход по
+      заголовку Authorization: Bearer с личным ключом; JWT браузера там не принимается.
   - name: Projects
     description: Проекты и их параметры
   - name: Members
@@ -149,6 +155,62 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/User" }
+
+  # ---------- MCP tokens ----------
+  /users/me/mcp-tokens:
+    get:
+      tags: [McpTokens]
+      summary: Личные ключи текущего пользователя
+      description: Ключи для подключения ассистента, новые сверху. Самих ключей в ответе нет — только подписи.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/McpToken" }
+    post:
+      tags: [McpTokens]
+      summary: Выпустить ключ для ассистента
+      description: >
+        Возвращает сам ключ (secret) — единственный раз: в базе хранится только его хеш.
+        У одного пользователя не больше 10 ключей.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 120
+                  description: Подпись ключа, по которой его узнают в списке и в истории задач.
+                  example: "Claude Code, ноутбук"
+      responses:
+        "201":
+          description: Ключ выпущен
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/McpTokenCreated" }
+        "400": { description: Пустое или слишком длинное название либо исчерпан лимит ключей }
+
+  /users/me/mcp-tokens/{tokenId}:
+    parameters:
+      - name: tokenId
+        in: path
+        required: true
+        description: Идентификатор ключа.
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [McpTokens]
+      summary: Отозвать ключ
+      description: Ассистент, подключённый этим ключом, теряет доступ со следующего запроса.
+      responses:
+        "204": { description: Отозван }
+        "404": { description: Среди ключей пользователя такого нет }
 
   # ---------- Projects ----------
   /projects:
@@ -1664,6 +1726,68 @@ components:
           type: string
           format: date-time
           description: Дата и время изменения.
+        source:
+          type: string
+          enum: [app, assistant]
+          description: >
+            Как сделано изменение: app — в приложении, assistant — нейронкой пользователя
+            через MCP с его подтверждения (подтвердил actor).
+          example: "assistant"
+        via:
+          type: string
+          nullable: true
+          description: Чем подключён ассистент — подпись личного ключа. null для правок в приложении.
+          example: "Claude Code, ноутбук"
+
+    McpToken:
+      type: object
+      description: Личный ключ для подключения ассистента. Сам ключ не возвращается.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Подпись ключа.
+          example: "Claude Code, ноутбук"
+        hint:
+          type: string
+          description: Последние 4 символа ключа — чтобы узнать его в списке.
+          example: "X7QK"
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Когда ключом пользовались в последний раз (с точностью до минуты).
+
+    McpTokenCreated:
+      type: object
+      description: Ответ на выпуск ключа — единственный, в котором есть сам ключ.
+      properties:
+        token: { $ref: "#/components/schemas/McpToken" }
+        secret:
+          type: string
+          description: "Ключ для заголовка Authorization: Bearer в настройках ассистента."
+          example: "tgn_MGREF2MTOQLR3J5J3UJXJTUICV"
+
+    StatusChangeStats:
+      type: object
+      description: >
+        Смены статусов задач проекта за последние periodDays дней и сколько из них сделано
+        через ассистента (MCP). Доля viaAssistant / total — метрика подключения к нейронкам.
+      properties:
+        periodDays:
+          type: integer
+          example: 30
+        total:
+          type: integer
+          example: 12
+        viaAssistant:
+          type: integer
+          example: 3
 
     GanttChart:
       type: object
@@ -1925,4 +2049,7 @@ components:
           type: array
           description: Загрузка участников команды текущего спринта.
           items: { $ref: "#/components/schemas/MemberWorkload" }
+        statusChanges:
+          allOf: [{ $ref: "#/components/schemas/StatusChangeStats" }]
+          description: Как часто обновляют статусы задач и какая доля обновлений — через ассистента.
 

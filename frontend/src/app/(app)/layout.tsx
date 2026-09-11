@@ -1,23 +1,37 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 
-import { PageLoading } from "@/components/app/page-state";
+import { SessionCheckLoading } from "@/components/app/page-state";
 import { Sidebar } from "@/components/app/sidebar";
+import { ProductTour } from "@/components/tour/product-tour";
 import { TopBar } from "@/components/app/top-bar";
 import { CurrentProjectProvider, useCurrentProject } from "@/data/current-project";
 import { useTasks } from "@/data/queries";
+import { isTourCompleted } from "@/lib/tour";
 import { getAccessToken } from "@/services/http-client";
 
+type AuthState = "checking" | "authorized" | "anonymous";
+
+const noSubscription = () => () => {};
+
 /**
- * Оболочка внутренних экранов. Все эндпоинты требуют Bearer-токен, поэтому без
- * него сразу отправляем на вход, не дожидаясь 401 от первого запроса.
- *
- * Проверка выполняется в эффекте, а не при рендере: токен лежит в localStorage,
- * которого на сервере нет, и обращение к нему во время рендера дало бы
- * расхождение серверной и клиентской разметки.
+ * Есть ли Bearer-токен. Токен живёт в localStorage, которого нет на сервере —
+ * useSyncExternalStore, а не useState+useEffect, отдаёт на сервере и при
+ * первом клиентском рендере одинаковое «checking» (иначе разметка разошлась
+ * бы при гидратации) и подставляет настоящее значение сразу после неё, без
+ * ручного setState в эффекте.
  */
+function useAuthState(): AuthState {
+  return useSyncExternalStore(
+    noSubscription,
+    () => (getAccessToken() ? "authorized" : "anonymous"),
+    () => "checking",
+  );
+}
+
+/** Оболочка внутренних экранов. Все эндпоинты требуют Bearer-токен. */
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <CurrentProjectProvider>
@@ -28,16 +42,26 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
 function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const authState = useAuthState();
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourAutoStarted, setTourAutoStarted] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Без токена сразу отправляем на вход, не дожидаясь 401 от первого запроса.
   useEffect(() => {
-    if (getAccessToken()) {
-      setAuthorized(true);
-      return;
-    }
-    setAuthorized(false);
-    router.replace("/login");
-  }, [router]);
+    if (authState === "anonymous") router.replace("/login");
+  }, [authState, router]);
+
+  // Тур запускаем один раз, сразу после того как сессия подтверждена: до
+  // этого экраны ещё не отрисованы, и подсвечивать было бы нечего. Условие
+  // выполняется прямо при рендере (а не в эффекте): react-hooks/set-state-in-effect
+  // запрещает setState в эффектах, а обновление во время рендера, guarded
+  // флагом «уже запускали», — санкционированный React способ реагировать на
+  // переход authState в новое значение без лишнего useEffect.
+  if (authState === "authorized" && !tourAutoStarted) {
+    setTourAutoStarted(true);
+    if (!isTourCompleted()) setTourOpen(true);
+  }
 
   const { projects, projectId, selectProject } = useCurrentProject();
   // Тот же ключ, что и на экране Ганта, — React Query переиспользует ответ,
@@ -45,15 +69,15 @@ function AppShell({ children }: { children: ReactNode }) {
   const tasks = useTasks(projectId);
   const firstTaskId = tasks.data?.[0]?.id;
 
-  if (authorized === null) {
+  if (authState === "checking") {
     return (
       <div className="flex min-h-screen flex-1 items-center justify-center bg-page p-6">
-        <PageLoading label="Проверяем сессию…" />
+        <SessionCheckLoading />
       </div>
     );
   }
 
-  if (!authorized) return null;
+  if (authState === "anonymous") return null;
 
   return (
     <div className="flex min-h-screen flex-1">
@@ -62,11 +86,16 @@ function AppShell({ children }: { children: ReactNode }) {
         currentProjectId={projectId}
         onSelectProject={selectProject}
         detailsHref={firstTaskId ? `/tasks/${firstTaskId}` : null}
+        onStartTour={() => setTourOpen(true)}
+        mobileOpen={mobileMenuOpen}
+        onMobileOpenChange={setMobileMenuOpen}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar />
-        <main className="min-w-0 flex-1 bg-page p-6">{children}</main>
+        <TopBar onOpenMenu={() => setMobileMenuOpen(true)} menuOpen={mobileMenuOpen} />
+        <main className="min-w-0 flex-1 overflow-x-hidden bg-page p-4 sm:p-6">{children}</main>
       </div>
+
+      {tourOpen ? <ProductTour onClose={() => setTourOpen(false)} /> : null}
     </div>
   );
 }

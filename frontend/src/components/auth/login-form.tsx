@@ -108,7 +108,7 @@ export function LoginForm() {
         </div>
         <Link
           href="/forgot-password"
-          className="rounded-control text-[13px] font-medium text-brand hover:text-brand-hover focus-visible:focus-ring"
+          className="rounded-control text-13 font-medium text-brand hover:text-brand-hover focus-visible:focus-ring"
         >
           Забыли пароль?
         </Link>

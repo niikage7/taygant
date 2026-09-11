@@ -71,6 +71,8 @@ check "Фронтенд проксирует запросы в бэкенд, б�
   body_contains pong http://127.0.0.1:3000/backend/ping
 check "API закрыт без токена (/api/v1/projects → 401)" \
   status_is 401 http://127.0.0.1:3000/backend/api/v1/projects
+check "MCP-сервер для ассистентов доступен через прокси и закрыт без личного ключа (/mcp → 401)" \
+  status_is 401 http://127.0.0.1:3000/backend/mcp
 if [ "${SMOKE_DEMO_LOGIN:-false}" = "true" ]; then
   check "Вход демо-пользователем через API (сидинг, bcrypt, JWT)" \
     body_contains accessToken \

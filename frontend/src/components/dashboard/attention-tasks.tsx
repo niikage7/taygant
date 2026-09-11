@@ -16,19 +16,19 @@ export function AttentionTasks({ tasks }: { tasks: AttentionTask[] }) {
           <CircleAlert className="size-4 text-danger" />
           Задачи, требующие внимания
         </CardTitle>
-        <span className="rounded-control bg-surface-muted px-2 py-1 font-mono text-[11px] text-ink-muted">
+        <span className="rounded-control bg-surface-muted px-2 py-1 font-mono text-2xs text-ink-muted">
           {tasks.length} {plural(tasks.length, ["задача", "задачи", "задач"])} в зоне риска
         </span>
       </CardHeader>
       <CardBody className="flex-1 pt-3">
         {tasks.length === 0 ? (
-          <p className="py-8 text-center text-[13px] text-ink-muted">
+          <p className="py-8 text-center text-13 text-ink-muted">
             Отстающих задач нет — проект идёт по плану.
           </p>
         ) : (
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-line text-[11px] tracking-wider text-ink-faint uppercase">
+              <tr className="border-b border-line text-2xs tracking-wider text-ink-faint uppercase">
                 <th scope="col" className="pb-2 font-semibold">
                   WBS / Задача
                 </th>
@@ -58,7 +58,7 @@ export function AttentionTasks({ tasks }: { tasks: AttentionTask[] }) {
                         >
                           #{task.wbsNumber}
                         </span>
-                        <span className="text-[13px] text-ink group-hover:text-brand">
+                        <span className="text-13 text-ink group-hover:text-brand">
                           {task.title}
                         </span>
                       </Link>
@@ -66,13 +66,13 @@ export function AttentionTasks({ tasks }: { tasks: AttentionTask[] }) {
                     <td className="py-3 pr-3">
                       {task.assignee ? (
                         <span className="flex items-center gap-1.5">
-                          <Avatar fullName={task.assignee.fullName} className="size-5 text-[9px]" />
-                          <span className="text-[13px] whitespace-nowrap text-ink-muted">
+                          <Avatar fullName={task.assignee.fullName} className="size-5 text-2xs" />
+                          <span className="text-13 whitespace-nowrap text-ink-muted">
                             {task.assignee.fullName}
                           </span>
                         </span>
                       ) : (
-                        <span className="text-[13px] text-ink-faint">—</span>
+                        <span className="text-13 text-ink-faint">—</span>
                       )}
                     </td>
                     <td

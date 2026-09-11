@@ -13,6 +13,7 @@ import {
   type TimeScale,
 } from "@/lib/gantt";
 import { cn } from "@/lib/utils";
+import type { GanttRow } from "@/lib/gantt-rows";
 import type { Milestone, Task, TaskDependency } from "@/types";
 
 export const ROW_HEIGHT = 52;
@@ -33,7 +34,7 @@ const MONTH_SHORT_LABEL_MIN_WIDTH = 64;
  * избавляет от рассинхрона стрелок с отрезками при прокрутке и смене масштаба.
  */
 export function Timeline({
-  tasks,
+  rows,
   dependencies,
   milestones,
   scale,
@@ -44,7 +45,8 @@ export function Timeline({
   canMoveTask,
   onTaskMove,
 }: {
-  tasks: Task[];
+  /** Те же строки, что и в реестре: заголовки вех тоже занимают строку. */
+  rows: GanttRow[];
   dependencies: TaskDependency[];
   /** Контрольные точки проекта — отдельная сущность от задач с isMilestone. */
   milestones: Milestone[];
@@ -64,9 +66,14 @@ export function Timeline({
   const months = monthColumns(range);
   const subs = subColumns(range, scale);
   const weekends = weekendBands(range);
-  const rowIndex = new Map(tasks.map((task, index) => [task.id, index]));
+  // Индекс строки нужен и отрезкам, и стрелкам связей: считаем один раз по
+  // тем же строкам, что рисует реестр, иначе стрелки уедут от отрезков.
+  const taskRows = rows.flatMap((row, index) =>
+    row.kind === "task" ? [{ task: row.task, index }] : [],
+  );
+  const rowIndex = new Map(taskRows.map(({ task, index }) => [task.id, index]));
   const todayLeft = offsetPx(range, today) + range.pxPerDay / 2;
-  const bodyHeight = tasks.length * ROW_HEIGHT;
+  const bodyHeight = rows.length * ROW_HEIGHT;
 
   // При открытии показываем окрестность сегодняшнего дня, а не начало графика:
   // проект длится месяцы, и без этого пользователь каждый раз мотал бы вручную.
@@ -87,7 +94,7 @@ export function Timeline({
             {months.map((month) => (
               <span
                 key={month.key}
-                className="absolute top-0 flex h-6 items-center overflow-hidden px-2 text-[11px] font-bold tracking-wide whitespace-nowrap text-brand uppercase"
+                className="absolute top-0 flex h-6 items-center overflow-hidden px-2 text-2xs font-bold tracking-wide whitespace-nowrap text-brand uppercase"
                 style={{ left: month.left, width: month.width }}
               >
                 {month.width >= MONTH_FULL_LABEL_MIN_WIDTH
@@ -102,7 +109,7 @@ export function Timeline({
             {subs.map((sub) => (
               <span
                 key={sub.key}
-                className="absolute top-0 flex h-6 items-center justify-center border-l border-line text-[10px] text-ink-faint"
+                className="absolute top-0 flex h-6 items-center justify-center border-l border-line text-3xs text-ink-faint"
                 style={{ left: sub.left, width: sub.width }}
               >
                 {sub.label}
@@ -128,16 +135,22 @@ export function Timeline({
             />
           ))}
 
-          {tasks.map((_, index) => (
+          {rows.map((row, index) => (
             <span
               key={index}
-              className="absolute left-0 w-full border-b border-line"
-              style={{ top: (index + 1) * ROW_HEIGHT - 1 }}
+              className={cn(
+                "absolute left-0 w-full border-b border-line",
+                row.kind === "milestone" && "bg-accent-tint/40",
+              )}
+              style={{
+                top: row.kind === "milestone" ? index * ROW_HEIGHT : (index + 1) * ROW_HEIGHT - 1,
+                height: row.kind === "milestone" ? ROW_HEIGHT : undefined,
+              }}
             />
           ))}
 
           <DependencyArrows
-            tasks={tasks}
+            tasks={taskRows.map(({ task }) => task)}
             dependencies={dependencies}
             rowIndex={rowIndex}
             range={range}
@@ -145,7 +158,7 @@ export function Timeline({
             highlightCriticalPath={highlightCriticalPath}
           />
 
-          {tasks.map((task, index) => (
+          {taskRows.map(({ task, index }) => (
             <TaskBar
               key={task.id}
               task={task}
@@ -269,7 +282,7 @@ function TaskBar({
         title={`${task.title} · ${format(parseISO(task.startDate), "dd.MM.yyyy")}`}
       >
         <span className="size-3.5 rotate-45 rounded-[2px] bg-brand" />
-        <span className="text-[11px] font-semibold whitespace-nowrap text-brand">
+        <span className="text-2xs font-semibold whitespace-nowrap text-brand">
           {task.title}
         </span>
       </span>
@@ -296,7 +309,7 @@ function TaskBar({
         style={{ width: `${task.progressPercent}%` }}
       />
       {width > 60 ? (
-        <span className="relative z-1 truncate px-2 text-[11px] font-semibold text-white">
+        <span className="relative z-1 truncate px-2 text-2xs font-semibold text-white">
           {task.progressPercent}% · {task.title}
         </span>
       ) : null}

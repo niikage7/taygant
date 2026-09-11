@@ -1,5 +1,11 @@
 import type { User } from "./user";
 
+/**
+ * Как сделано изменение: `app` — в приложении, `assistant` — нейронкой
+ * пользователя через MCP, с подтверждения автора записи.
+ */
+export type HistorySource = "app" | "assistant";
+
 /** Запись в журнале изменений (аудите) задачи. */
 export interface HistoryEntry {
   /** Идентификатор записи истории. */
@@ -18,4 +24,8 @@ export interface HistoryEntry {
   newValue: string | null;
   /** Дата и время изменения. */
   createdAt: string;
+  /** Через что сделано изменение. */
+  source: HistorySource;
+  /** Чем подключён ассистент — подпись личного ключа; null для правок в приложении. */
+  via: string | null;
 }

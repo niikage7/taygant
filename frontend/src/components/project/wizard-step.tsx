@@ -26,8 +26,8 @@ export function WizardStep({
               <Icon className="size-4.5" />
             </span>
             <div>
-              <h2 className="text-[15px] font-semibold text-ink">{title}</h2>
-              <p className="mt-0.5 text-[13px] text-ink-muted">{subtitle}</p>
+              <h2 className="text-15 font-semibold text-ink">{title}</h2>
+              <p className="mt-0.5 text-13 text-ink-muted">{subtitle}</p>
             </div>
           </div>
           {aside}

@@ -53,20 +53,20 @@ export function Calendar({
         months: "relative",
         month: "space-y-3",
         month_caption: "flex h-8 items-center justify-center",
-        caption_label: "text-[13px] font-semibold text-ink capitalize",
+        caption_label: "text-13 font-semibold text-ink capitalize",
         nav: "absolute inset-x-0 top-0 z-1 flex h-8 items-center justify-between",
         button_previous:
-          "flex size-7 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-40 focus-visible:focus-ring",
+          "flex size-7 cursor-pointer items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:focus-ring",
         button_next:
-          "flex size-7 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-40 focus-visible:focus-ring",
+          "flex size-7 cursor-pointer items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:focus-ring",
         month_grid: "w-full border-collapse",
         weekdays: "flex",
         weekday:
-          "w-8 text-[11px] font-semibold uppercase text-ink-faint",
+          "w-8 text-2xs font-semibold uppercase text-ink-faint",
         week: "mt-1 flex",
         day: "p-0",
         day_button:
-          "flex size-8 items-center justify-center rounded-control text-[13px] text-ink transition-colors hover:bg-surface-muted focus-visible:focus-ring",
+          "flex size-8 cursor-pointer items-center justify-center rounded-control text-13 text-ink transition-colors hover:bg-surface-muted focus-visible:focus-ring",
         selected: "[&>button]:bg-brand [&>button]:text-white [&>button]:hover:bg-brand-hover",
         today: "[&>button]:font-bold [&>button]:text-brand",
         outside: "[&>button]:text-ink-faint/60",

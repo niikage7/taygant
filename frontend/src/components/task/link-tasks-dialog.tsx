@@ -20,12 +20,14 @@ import type { Task } from "@/types";
  * остаются: откатывать их хуже, чем сообщить о частичном результате.
  */
 export function LinkTasksDialog({
-  milestoneTaskId,
+  milestoneId,
+  milestoneName,
   candidates,
   trigger,
 }: {
-  /** Задача-веха, к которой привязываются работы. */
-  milestoneTaskId: string;
+  /** Контрольная точка проекта, к которой привязываются работы. */
+  milestoneId: string;
+  milestoneName: string;
   candidates: Task[];
   trigger: ReactNode;
 }) {
@@ -35,17 +37,16 @@ export function LinkTasksDialog({
 
   const assignTasks = useAssignTasksToMilestone();
   // Уже привязанные к этой вехе показываем отмеченными, чужие вехи не трогаем.
+  // Задачи, уже привязанные к другой вехе, не показываем: перетаскивание между
+  // вехами — отдельный сценарий, и молча переназначать чужую задачу неверно.
   const available = candidates.filter(
-    (task) =>
-      task.id !== milestoneTaskId &&
-      !task.isMilestone &&
-      (!task.milestoneId || task.milestoneId === milestoneTaskId),
+    (task) => !task.milestoneId || task.milestoneId === milestoneId,
   );
 
   function submit() {
     setFailed([]);
     assignTasks.mutate(
-      { taskIds: selected, milestoneId: milestoneTaskId },
+      { taskIds: selected, milestoneId },
       {
         onSuccess: (errors) => {
           if (errors.length > 0) {
@@ -82,11 +83,11 @@ export function LinkTasksDialog({
         <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-card bg-surface p-6 shadow-popover">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <Dialog.Title className="text-[15px] font-semibold text-ink">
+              <Dialog.Title className="text-15 font-semibold text-ink">
                 Привязать задачи к вехе
               </Dialog.Title>
-              <Dialog.Description className="mt-1 text-[13px] text-ink-muted">
-                Отметьте работы, которые ведут к этой вехе. Прогресс вехи
+              <Dialog.Description className="mt-1 text-13 text-ink-muted">
+                Отметьте работы, которые ведут к вехе «{milestoneName}». Прогресс
                 считается по ним.
               </Dialog.Description>
             </div>
@@ -99,7 +100,7 @@ export function LinkTasksDialog({
           </div>
 
           {available.length === 0 ? (
-            <p className="py-8 text-center text-[13px] text-ink-muted">
+            <p className="py-8 text-center text-13 text-ink-muted">
               Все задачи проекта уже связаны с этой вехой.
             </p>
           ) : (
@@ -118,7 +119,7 @@ export function LinkTasksDialog({
                           )
                         }
                       />
-                      <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
+                      <span className="min-w-0 flex-1 truncate text-13 text-ink">
                         <span className="font-mono text-ink-faint">#{task.wbsNumber}</span>{" "}
                         {task.title}
                       </span>

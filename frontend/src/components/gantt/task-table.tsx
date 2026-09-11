@@ -13,7 +13,7 @@ import Link from "next/link";
 import { ROW_HEIGHT } from "@/components/gantt/timeline";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { formatDayMonth, plural } from "@/lib/format";
+import { formatDayMonth } from "@/lib/format";
 import { TASK_STATUS_META } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
 import type { GanttRow } from "@/lib/gantt-rows";
@@ -51,7 +51,7 @@ export function TaskTable({
 
   return (
     <div className="w-[600px] shrink-0 border-r border-line">
-      <div className="sticky top-0 z-10 flex h-12 items-end border-b border-line bg-surface px-3 pb-2 text-[11px] tracking-wider text-ink-faint uppercase">
+      <div className="sticky top-0 z-10 flex h-12 items-end border-b border-line bg-surface px-3 pb-2 text-2xs tracking-wider text-ink-faint uppercase">
         <span className="w-8 shrink-0 font-semibold">#</span>
         <span className="min-w-0 flex-1 truncate font-semibold">Наименование задачи</span>
         <span className="w-30 shrink-0 truncate pl-2 font-semibold">Исполнитель</span>
@@ -62,35 +62,28 @@ export function TaskTable({
       </div>
 
       <ul>
-        {rows.map(({ task, depth, childCount }) => {
-          const critical = isAtRisk(task) && !task.isMilestone;
-          const status = TASK_STATUS_META[task.status];
-          const predecessor = predecessorOf.get(task.id);
-          const StatusIcon =
-            task.status === "done"
-              ? CircleCheck
-              : task.status === "in_progress"
-                ? CircleDot
-                : Circle;
+        {rows.map((row) => {
+          if (row.kind === "milestone") {
+            const { milestone, childCount } = row;
+            const isCollapsed = collapsed.has(milestone.id);
+            const complete =
+              milestone.tasksTotal > 0 && milestone.tasksDone === milestone.tasksTotal;
 
-          if (task.isMilestone) {
-            // Веха — не работа, а точка контроля и заголовок группы: полоса во
-            // всю ширину, без колонок длительности и статуса, которые к ней
-            // неприменимы. Иначе она читается как ещё одна строка задачи.
-            const isCollapsed = collapsed.has(task.id);
             return (
               <li
-                key={task.id}
+                key={milestone.id}
                 className="flex items-center gap-2 border-y border-accent/30 bg-accent-tint px-3"
                 style={{ height: ROW_HEIGHT }}
               >
                 <button
                   type="button"
-                  onClick={() => onToggleCollapse(task.id)}
+                  onClick={() => onToggleCollapse(milestone.id)}
                   disabled={childCount === 0}
                   aria-expanded={!isCollapsed}
                   aria-label={
-                    isCollapsed ? `Развернуть веху «${task.title}»` : `Свернуть веху «${task.title}»`
+                    isCollapsed
+                      ? `Развернуть веху «${milestone.name}»`
+                      : `Свернуть веху «${milestone.name}»`
                   }
                   className="flex size-5 shrink-0 items-center justify-center rounded-control text-accent transition-colors hover:bg-accent/10 focus-visible:focus-ring disabled:opacity-30"
                 >
@@ -105,27 +98,37 @@ export function TaskTable({
 
                 <span className="size-3 shrink-0 rotate-45 rounded-[2px] bg-accent" />
 
-                <Link
-                  href={`/tasks/${task.id}`}
-                  className="min-w-0 flex-1 rounded-control focus-visible:focus-ring"
-                >
-                  <span className="truncate text-[13px] font-semibold text-accent">
-                    {task.title}
-                  </span>
-                </Link>
+                <span className="min-w-0 flex-1 truncate text-13 font-semibold text-accent">
+                  {milestone.code ? (
+                    <span className="font-mono opacity-70">{milestone.code} </span>
+                  ) : null}
+                  {milestone.name}
+                </span>
 
-                <Badge tone={childCount > 0 ? "accent" : "neutral"} size="sm">
-                  {childCount > 0
-                    ? `${childCount} ${plural(childCount, ["задача", "задачи", "задач"])}`
+                <Badge tone={complete ? "success" : childCount > 0 ? "accent" : "neutral"} size="sm">
+                  {milestone.tasksTotal > 0
+                    ? `${milestone.tasksDone} / ${milestone.tasksTotal}`
                     : "нет задач"}
                 </Badge>
 
-                <span className="shrink-0 font-mono text-[11px] text-accent">
-                  {formatDayMonth(task.startDate)}
+                <span className="shrink-0 font-mono text-2xs text-accent">
+                  {formatDayMonth(milestone.plannedDate)}
                 </span>
               </li>
             );
           }
+
+          const { task, depth } = row;
+          const critical = isAtRisk(task);
+          const status = TASK_STATUS_META[task.status];
+          const predecessor = predecessorOf.get(task.id);
+          const StatusIcon =
+            task.status === "done"
+              ? CircleCheck
+              : task.status === "in_progress"
+                ? CircleDot
+                : Circle;
+
 
           return (
             <li
@@ -170,7 +173,7 @@ export function TaskTable({
                 )}
                 <span
                   className={cn(
-                    "truncate text-[13px]",
+                    "truncate text-13",
                     critical ? "font-semibold text-danger" : "text-ink",
                   )}
                 >
@@ -181,8 +184,8 @@ export function TaskTable({
               <span className="flex w-30 shrink-0 items-center gap-1.5">
                 {task.assignee ? (
                   <>
-                    <Avatar fullName={task.assignee.fullName} className="size-5 text-[9px]" />
-                    <span className="truncate text-[13px] text-ink-muted">
+                    <Avatar fullName={task.assignee.fullName} className="size-5 text-2xs" />
+                    <span className="truncate text-13 text-ink-muted">
                       {task.assignee.fullName}
                     </span>
                   </>
@@ -191,7 +194,7 @@ export function TaskTable({
 
               <span
                 className={cn(
-                  "w-20 shrink-0 font-mono text-[11px] leading-tight",
+                  "w-20 shrink-0 font-mono text-2xs leading-tight",
                   critical ? "text-danger" : "text-ink-muted",
                 )}
               >

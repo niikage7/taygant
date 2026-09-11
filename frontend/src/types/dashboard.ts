@@ -64,6 +64,19 @@ export interface AttentionTask {
   deviationDays: number;
 }
 
+/**
+ * Смены статусов задач за период и сколько из них сделано через ассистента
+ * (MCP). Доля `viaAssistant / total` — метрика подключения к нейронкам.
+ */
+export interface StatusChangeStats {
+  /** Длина периода в днях. */
+  periodDays: number;
+  /** Сколько раз за период меняли статусы задач проекта. */
+  total: number;
+  /** Из них — через ассистента. */
+  viaAssistant: number;
+}
+
 /** Сводные показатели состояния и рисков проекта для экрана «Обзор и Аналитика». */
 export interface ProjectDashboard {
   /** Краткая карточка проекта. */
@@ -90,4 +103,6 @@ export interface ProjectDashboard {
   attentionTasks: AttentionTask[];
   /** Загрузка участников команды текущего спринта. */
   teamWorkload: MemberWorkload[];
+  /** Как часто обновляют статусы задач и какая доля — через ассистента. */
+  statusChanges: StatusChangeStats;
 }

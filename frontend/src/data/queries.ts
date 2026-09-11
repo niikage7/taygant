@@ -8,12 +8,14 @@ import {
   dashboardService,
   dependenciesService,
   historyService,
+  mcpTokensService,
   membersService,
   simulationService,
   milestonesService,
   projectsService,
   tasksService,
   usersService,
+  workloadService,
 } from "@/services";
 import type {
   Comment,
@@ -21,6 +23,9 @@ import type {
   GanttScale,
   HistoryEntry,
   ApplyShiftRequest,
+  McpToken,
+  McpTokenCreateRequest,
+  MemberWorkload,
   MilestoneCreateRequest,
   Project,
   ProjectDashboard,
@@ -43,8 +48,7 @@ import type {
  *
  * Состояние бэкенда на момент написания (см. `backend/internal/api/`):
  * реализованы projects, tasks (включая `/gantt`), dependencies, milestones,
- * members, sprints, checklist, comments, history, users и auth.
- * Возвращают 501 только `workload` и `export`.
+ * members, sprints, checklist, comments, history, users, auth, workload и export.
  */
 
 export const queryKeys = {
@@ -57,9 +61,11 @@ export const queryKeys = {
   taskHistory: (taskId: string) => ["tasks", taskId, "history"] as const,
   taskComments: (taskId: string) => ["tasks", taskId, "comments"] as const,
   dashboard: (projectId: string) => ["projects", projectId, "dashboard"] as const,
+  workload: (projectId: string) => ["projects", projectId, "workload"] as const,
   members: (projectId: string) => ["projects", projectId, "members"] as const,
   users: (search: string) => ["users", search] as const,
   task: (taskId: string) => ["tasks", taskId] as const,
+  mcpTokens: ["me", "mcp-tokens"] as const,
 };
 
 export function useProjects(): UseQueryResult<ProjectSummary[]> {
@@ -181,7 +187,8 @@ export function useAssignTasksToMilestone() {
           : [],
       );
     },
-  }); // <-- Добавьте эту строку (закрывает useMutation)
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+  });
 }
 /**
  * Перенос задачи на диаграмме Ганта: меняются только сроки.
@@ -268,6 +275,15 @@ export function useDashboard(projectId: string | undefined): UseQueryResult<Proj
   });
 }
 
+/** Загрузка команды по текущему спринту (`GET /projects/{id}/workload`). */
+export function useWorkload(projectId: string | undefined): UseQueryResult<MemberWorkload[]> {
+  return useQuery({
+    queryKey: queryKeys.workload(projectId ?? ""),
+    queryFn: () => workloadService.list(projectId as string),
+    enabled: Boolean(projectId),
+  });
+}
+
 export function useProjectMembers(projectId: string | undefined): UseQueryResult<ProjectMember[]> {
   return useQuery({
     queryKey: queryKeys.members(projectId ?? ""),
@@ -281,6 +297,30 @@ export function useUsers(search?: string): UseQueryResult<User[]> {
   return useQuery({
     queryKey: queryKeys.users(search ?? ""),
     queryFn: () => usersService.list(search),
+  });
+}
+
+/** Личные ключи для подключения ассистента по MCP. */
+export function useMcpTokens(): UseQueryResult<McpToken[]> {
+  return useQuery({
+    queryKey: queryKeys.mcpTokens,
+    queryFn: () => mcpTokensService.list(),
+  });
+}
+
+export function useCreateMcpToken() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: McpTokenCreateRequest) => mcpTokensService.create(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mcpTokens }),
+  });
+}
+
+export function useRevokeMcpToken() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tokenId: string) => mcpTokensService.revoke(tokenId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mcpTokens }),
   });
 }
 
@@ -329,6 +369,26 @@ export function useRemoveMember(projectId: string | undefined) {
 function useMilestoneInvalidation() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: ["projects"] });
+}
+
+export function useDeleteTask(taskId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => tasksService.remove(taskId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
+/**
+ * Удаление проекта. На бэкенде это архивирование (`projects.Archive`), то есть
+ * логическое удаление — проект исчезает из списка, но данные остаются.
+ */
+export function useDeleteProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (projectId: string) => projectsService.remove(projectId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
+  });
 }
 
 export function useCreateMilestone(projectId: string | undefined) {
