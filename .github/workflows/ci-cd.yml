@@ -19,10 +19,16 @@
 name: CI/CD
 
 on:
+  # pull_request намеренно не триггерит workflow: раннер self-hosted, то есть
+  # выполняет код на той же машине, где работает прод. Pull request может
+  # открыть кто угодно (репозиторий публичный), а push в dev — только
+  # участник с доступом на запись. Проверки перед мержем — вручную или
+  # в отдельном workflow на GitHub-хостед раннере.
+  #
+  # main здесь не триггерит: релиз — это мерж dev в main руками в финале,
+  # без отдельного прогона CI на main (сервер один, деплоится только dev).
   push:
-    branches: [main, dev]
-  pull_request:
-    branches: [main, dev]
+    branches: [dev]
   workflow_dispatch:
     inputs:
       deploy_despite_failed_checks:
