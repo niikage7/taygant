@@ -210,8 +210,8 @@ func overdueRisk(t models.Task) Risk {
 
 	risk := Risk{
 		Severity:      severity,
-		Title:         fmt.Sprintf("Задача %q просрочена", t.Title),
-		Description:   fmt.Sprintf("Задача %s: плановый срок истёк %d дн. назад.", t.Code, overdueDays),
+		Title:         fmt.Sprintf("Задача «%s» просрочена", t.Title),
+		Description:   fmt.Sprintf("Задача %s: плановый срок истёк %d %s назад.", t.Code, overdueDays, pluralizeDaysRu(overdueDays)),
 		RelatedTaskID: &t.ID,
 	}
 	if t.IsCriticalPath {
@@ -228,8 +228,29 @@ func deadlineRisk(forecastDeviationDays int) Risk {
 	return Risk{
 		Severity:    deadlineRiskSeverity(forecastDeviationDays),
 		Title:       "Прогноз срока сдачи хуже дедлайна",
-		Description: fmt.Sprintf("По текущему плану проект завершится на %d дн. позже дедлайна.", forecastDeviationDays),
+		Description: fmt.Sprintf("По текущему плану проект завершится на %d %s позже дедлайна.", forecastDeviationDays, pluralizeDaysRu(forecastDeviationDays)),
 		ImpactDays:  &impact,
+	}
+}
+
+// pluralizeDaysRu возвращает верную форму слова «день» для числа n
+// (учитывает и отрицательные значения — берёт модуль).
+func pluralizeDaysRu(n int) string {
+	abs := n
+	if abs < 0 {
+		abs = -abs
+	}
+	abs %= 100
+	tail := abs % 10
+	switch {
+	case abs > 10 && abs < 20:
+		return "дней"
+	case tail == 1:
+		return "день"
+	case tail >= 2 && tail <= 4:
+		return "дня"
+	default:
+		return "дней"
 	}
 }
 

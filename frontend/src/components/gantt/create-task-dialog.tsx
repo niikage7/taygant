@@ -274,11 +274,15 @@ export function CreateTaskDialog({
                 onChange={(event) => setAssigneeId(event.target.value)}
               >
                 <option value="">Не назначен</option>
-                {(members.data ?? []).map((member) => (
-                  <option key={member.user.id} value={member.user.id}>
-                    {member.user.fullName}
-                  </option>
-                ))}
+                {/* Участник с доступом только на просмотр не сможет менять статус
+                    своей задачи, поэтому в ответственные не предлагается. */}
+                {(members.data ?? [])
+                  .filter((member) => member.accessLevel !== "view")
+                  .map((member) => (
+                    <option key={member.user.id} value={member.user.id}>
+                      {member.user.fullName}
+                    </option>
+                  ))}
               </Select>
             </div>
 

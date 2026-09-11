@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/go-pdf/fpdf"
@@ -126,6 +127,71 @@ func boolLabel(b bool) string {
 	return "нет"
 }
 
+// formatDateRu форматирует дату в принятом в интерфейсе виде ДД.ММ.ГГГГ.
+// Не путать с models.Date.String() — тот отдаёт формат спецификации
+// (YYYY-MM-DD) для сериализации в API и трогать его нельзя.
+func formatDateRu(d models.Date) string {
+	if d.IsZero() {
+		return ""
+	}
+	return d.Format("02.01.2006")
+}
+
+// taskStatusLabelsRu — русские подписи статусов задач для экспорта, в точности
+// как в интерфейсе (см. frontend/src/lib/task-status.ts, TASK_STATUS_META).
+var taskStatusLabelsRu = map[models.TaskStatus]string{
+	models.TaskStatusPlanned:    "План",
+	models.TaskStatusInProgress: "В работе",
+	models.TaskStatusDone:       "Готово",
+	models.TaskStatusOverdue:    "Просрочена",
+	models.TaskStatusBlocked:    "Заблокирована",
+}
+
+func taskStatusLabelRu(s models.TaskStatus) string {
+	if label, ok := taskStatusLabelsRu[s]; ok {
+		return label
+	}
+	return string(s)
+}
+
+// milestoneStatusLabelsRu — русские подписи статусов вех для экспорта, как в
+// интерфейсе (см. frontend/src/lib/task-status.ts, MILESTONE_STATUS_META).
+var milestoneStatusLabelsRu = map[models.MilestoneStatus]string{
+	models.MilestoneStatusPlanned: "План",
+	models.MilestoneStatusCurrent: "Текущая",
+	models.MilestoneStatusDone:    "Сдано",
+	models.MilestoneStatusFinal:   "Финал",
+}
+
+func milestoneStatusLabelRu(s models.MilestoneStatus) string {
+	if label, ok := milestoneStatusLabelsRu[s]; ok {
+		return label
+	}
+	return string(s)
+}
+
+// projectStatusLabelsRu — русские подписи статусов проекта для шапки экспорта.
+var projectStatusLabelsRu = map[models.ProjectStatus]string{
+	models.ProjectStatusDraft:     "Черновик",
+	models.ProjectStatusActive:    "Активен",
+	models.ProjectStatusOnHold:    "Приостановлен",
+	models.ProjectStatusCompleted: "Завершён",
+	models.ProjectStatusArchived:  "Архивирован",
+}
+
+func projectStatusLabelRu(s models.ProjectStatus) string {
+	if label, ok := projectStatusLabelsRu[s]; ok {
+		return label
+	}
+	return string(s)
+}
+
+// formatProgressRu округляет процент прогресса до целого — как везде в
+// интерфейсе ("45%", без десятичных).
+func formatProgressRu(percent float64) string {
+	return fmt.Sprintf("%d", int(math.Round(percent)))
+}
+
 // ---- XLSX ----
 
 func buildExportXLSX(project models.Project, metrics Metrics, tasks []models.Task, milestones []models.Milestone) ([]byte, error) {
@@ -164,11 +230,11 @@ func writeSummarySheet(f *excelize.File, sheet string, project models.Project, m
 		{"Код проекта", project.Code},
 		{"Название", project.Name},
 		{"Заказчик", project.CustomerOrg},
-		{"Статус", string(project.Status)},
+		{"Статус", projectStatusLabelRu(project.Status)},
 		{"Фаза", project.Phase},
-		{"Дата начала", project.StartDate.String()},
-		{"Дедлайн", project.Deadline.String()},
-		{"Прогресс, %", fmt.Sprintf("%.1f", metrics.ProgressPercent)},
+		{"Дата начала", formatDateRu(project.StartDate)},
+		{"Дедлайн", formatDateRu(project.Deadline)},
+		{"Прогресс, %", formatProgressRu(metrics.ProgressPercent)},
 		{"Индекс здоровья", fmt.Sprintf("%d", metrics.HealthIndex)},
 		{"Критических рисков", fmt.Sprintf("%d", metrics.CriticalRisksCount)},
 		{"Рабочий календарь", string(project.WorkingCalendarType)},
@@ -195,8 +261,8 @@ func writeTasksSheet(f *excelize.File, sheet string, tasks []models.Task) {
 			assignee = t.Assignee.FullName
 		}
 		writeSheetRow(f, sheet, i+2,
-			t.Code, t.WBSNumber, t.Title, assignee, string(t.Status),
-			t.StartDate.String(), t.EndDate.String(), t.DurationWorkingDays,
+			t.Code, t.WBSNumber, t.Title, assignee, taskStatusLabelRu(t.Status),
+			formatDateRu(t.StartDate), formatDateRu(t.EndDate), t.DurationWorkingDays,
 			t.ProgressPercent, boolLabel(t.IsCriticalPath), t.BufferDays,
 		)
 	}
@@ -210,13 +276,13 @@ func writeMilestonesSheet(f *excelize.File, sheet string, milestones []models.Mi
 	for i, m := range milestones {
 		actual := ""
 		if m.ActualDate != nil {
-			actual = m.ActualDate.String()
+			actual = formatDateRu(*m.ActualDate)
 		}
 		risk := ""
 		if m.RiskDays != nil {
 			risk = fmt.Sprintf("%d", *m.RiskDays)
 		}
-		writeSheetRow(f, sheet, i+2, m.Code, m.Name, m.PlannedDate.String(), actual, string(m.Status), risk)
+		writeSheetRow(f, sheet, i+2, m.Code, m.Name, formatDateRu(m.PlannedDate), actual, milestoneStatusLabelRu(m.Status), risk)
 	}
 	setColWidths(f, sheet, 10, 40, 14, 16, 12, 10)
 }
@@ -267,9 +333,9 @@ func buildExportPDF(project models.Project, metrics Metrics, tasks []models.Task
 
 	pdf.SetFont(pdfFontFamily, "", 11)
 	summary := []string{
-		fmt.Sprintf("Статус: %s   Фаза: %s", project.Status, project.Phase),
-		fmt.Sprintf("Сроки: %s - %s   Рабочий календарь: %s", project.StartDate.String(), project.Deadline.String(), project.WorkingCalendarType),
-		fmt.Sprintf("Прогресс: %.1f%%   Индекс здоровья: %d   Критических рисков: %d", metrics.ProgressPercent, metrics.HealthIndex, metrics.CriticalRisksCount),
+		fmt.Sprintf("Статус: %s   Фаза: %s", projectStatusLabelRu(project.Status), project.Phase),
+		fmt.Sprintf("Сроки: %s - %s   Рабочий календарь: %s", formatDateRu(project.StartDate), formatDateRu(project.Deadline), project.WorkingCalendarType),
+		fmt.Sprintf("Прогресс: %s%%   Индекс здоровья: %d   Критических рисков: %d", formatProgressRu(metrics.ProgressPercent), metrics.HealthIndex, metrics.CriticalRisksCount),
 	}
 	for _, line := range summary {
 		pdf.CellFormat(0, 7, line, "", 1, "L", false, 0, "")
@@ -291,8 +357,8 @@ func buildExportPDF(project models.Project, metrics Metrics, tasks []models.Task
 			assignee = t.Assignee.FullName
 		}
 		return []string{
-			t.Code, t.Title, assignee, string(t.Status),
-			t.StartDate.String(), t.EndDate.String(),
+			t.Code, t.Title, assignee, taskStatusLabelRu(t.Status),
+			formatDateRu(t.StartDate), formatDateRu(t.EndDate),
 			fmt.Sprintf("%d", t.DurationWorkingDays), fmt.Sprintf("%d", t.ProgressPercent),
 			boolLabel(t.IsCriticalPath), fmt.Sprintf("%d", t.BufferDays),
 		}
@@ -309,13 +375,13 @@ func buildExportPDF(project models.Project, metrics Metrics, tasks []models.Task
 		m := milestones[i]
 		actual := ""
 		if m.ActualDate != nil {
-			actual = m.ActualDate.String()
+			actual = formatDateRu(*m.ActualDate)
 		}
 		risk := ""
 		if m.RiskDays != nil {
 			risk = fmt.Sprintf("%d", *m.RiskDays)
 		}
-		return []string{m.Code, m.Name, m.PlannedDate.String(), actual, string(m.Status), risk}
+		return []string{m.Code, m.Name, formatDateRu(m.PlannedDate), actual, milestoneStatusLabelRu(m.Status), risk}
 	})
 
 	var buf bytes.Buffer

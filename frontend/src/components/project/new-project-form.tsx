@@ -24,7 +24,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { TeamStep, type DraftMember } from "@/components/project/team-step";
 import { WizardStep } from "@/components/project/wizard-step";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,6 +45,15 @@ const NAME_MAX_LENGTH = 120;
 
 const toIsoDate = (date: Date) => format(date, "yyyy-MM-dd");
 const SECTION = "text-2xs font-semibold tracking-wider text-ink-faint uppercase";
+
+// Дедлайн по умолчанию не должен падать на выходной: суббота уходит на понедельник,
+// воскресенье — на понедельник же (сдвиг на 1 день).
+const nextWorkingDay = (date: Date) => {
+  const weekday = getDay(date);
+  if (weekday === 6) return addDays(date, 2);
+  if (weekday === 0) return addDays(date, 1);
+  return date;
+};
 
 // date-fns не умеет считать рабочие дни по шестидневке (там всегда сб+вс — выходные),
 // поэтому дни недели разбираем сами: для "6/1" выходной только воскресенье.
@@ -74,12 +82,15 @@ export function NewProjectForm({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [startDate, setStartDate] = useState(() => toIsoDate(new Date()));
-  const [deadline, setDeadline] = useState(() => toIsoDate(addDays(new Date(), 30)));
+  const [deadline, setDeadline] = useState(() => toIsoDate(nextWorkingDay(addDays(new Date(), 30))));
   const [customerOrg, setCustomerOrg] = useState("");
   const [calendar, setCalendar] = useState<WorkingCalendarType>("5/2");
   const [autoRecalculate, setAutoRecalculate] = useState(true);
   const [highlightCriticalPath, setHighlightCriticalPath] = useState(true);
   const [members, setMembers] = useState<DraftMember[]>([]);
+  // Ошибка «заполните обязательные поля» не должна быть видна на пустой форме —
+  // только после первой попытки отправить.
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
 
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -99,6 +110,7 @@ export function NewProjectForm({
   });
 
   const submit = () => {
+    setHasAttemptedSubmit(true);
     if (!requiredFilled) return;
     createProject.mutate({
       name: name.trim(),
@@ -125,6 +137,7 @@ export function NewProjectForm({
   const weekendDays = calendarDays - workingDays;
 
   const requiredFilled = name.trim().length > 0 && validRange;
+  const showValidationError = hasAttemptedSubmit && !requiredFilled;
 
   return (
     <form
@@ -156,11 +169,6 @@ export function NewProjectForm({
         icon={Info}
         title="Шаг 1. Основная информация"
         subtitle="Паспортные данные и ключевые вехи реализации"
-        aside={
-          <Badge tone="neutral" className="font-mono">
-            ID: PRJ-2025-084
-          </Badge>
-        }
       >
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <div>
@@ -178,7 +186,6 @@ export function NewProjectForm({
               maxLength={NAME_MAX_LENGTH}
               onChange={(event) => setName(event.target.value)}
               className="mt-1.5"
-              required
             />
           </div>
 
@@ -288,7 +295,6 @@ export function NewProjectForm({
         icon={SlidersHorizontal}
         title="Шаг 3. Начальные параметры диаграммы Ганта"
         subtitle="Вычислительное ядро расписания и логика сдвига дат"
-        aside={<span className="font-mono text-xs text-ink-faint">CPM Engine v4.2</span>}
       >
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <ToggleCard
@@ -350,22 +356,22 @@ export function NewProjectForm({
           <p
             className={cn(
               "flex items-start gap-2 text-13",
-              requiredFilled ? "text-ink-muted" : "text-danger",
+              requiredFilled ? "text-ink-muted" : showValidationError ? "text-danger" : "text-ink-muted",
             )}
           >
             <CircleCheck
               className={cn(
                 "mt-px size-4 shrink-0",
-                requiredFilled ? "text-success" : "text-danger",
+                requiredFilled ? "text-success" : showValidationError ? "text-danger" : "text-ink-faint",
               )}
             />
             {requiredFilled
-              ? "Все обязательные поля заполнены. Сформирована структура из 5 этапов."
+              ? "Все обязательные поля заполнены."
               : "Заполните название проекта и корректные сроки."}
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="submit" disabled={!requiredFilled || createProject.isPending}>
+            <Button type="submit" disabled={createProject.isPending}>
               <Flag />
               {createProject.isPending
                 ? "Создаём проект…"

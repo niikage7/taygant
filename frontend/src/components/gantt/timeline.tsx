@@ -117,16 +117,26 @@ export function Timeline({
       >
         <div className="relative h-6 border-b border-line">
           {months.map((month) => (
+            // Внешний span стоит на своём месте в таймлайне (левый край месяца),
+            // внутренний — sticky и «прилипает» к границе примороженного реестра
+            // при прокрутке, но не может выйти за пределы своего же месяца
+            // (родитель — его граница): иначе на масштабе «Дни», где месяц шире
+            // экрана, подпись уезжала бы из видимой области и шапка пустела.
             <span
               key={month.key}
-              className="absolute top-0 flex h-6 items-center overflow-hidden px-2 text-2xs font-bold tracking-wide whitespace-nowrap text-brand uppercase"
+              className="absolute top-0 h-6 overflow-hidden"
               style={{ left: month.left, width: month.width }}
             >
-              {month.width >= MONTH_FULL_LABEL_MIN_WIDTH
-                ? month.label
-                : month.width >= MONTH_SHORT_LABEL_MIN_WIDTH
-                  ? month.shortLabel
-                  : ""}
+              <span
+                className="sticky flex h-6 items-center px-2 text-2xs font-bold tracking-wide whitespace-nowrap text-brand uppercase"
+                style={{ left: frozenWidth }}
+              >
+                {month.width >= MONTH_FULL_LABEL_MIN_WIDTH
+                  ? month.label
+                  : month.width >= MONTH_SHORT_LABEL_MIN_WIDTH
+                    ? month.shortLabel
+                    : ""}
+              </span>
             </span>
           ))}
         </div>
@@ -317,6 +327,9 @@ function TaskBar({
   // Мало времени до дедлайна (или уже просрочена) и задача не закрыта — тоже риск.
   const daysLeft = differenceInCalendarDays(parseISO(task.endDate), parseISO(today));
   const nearDeadline = task.status !== "done" && daysLeft <= DEADLINE_RISK_DAYS;
+  // Заблокированная задача — блокирующая проблема, а не просто «в плане», поэтому
+  // красный, а не тот же оранжевый, что у планов и текущей работы.
+  const blocked = task.status === "blocked";
 
   if (task.isMilestone) {
     return (
@@ -350,7 +363,7 @@ function TaskBar({
       {...dragHandlers}
       className={cn(
         "absolute flex items-center overflow-hidden rounded-control",
-        critical || nearDeadline
+        critical || nearDeadline || blocked
           ? "bg-danger"
           : task.status === "done"
             ? "bg-success"

@@ -8,7 +8,7 @@
  */
 "use client";
 
-import { ArrowDown, ArrowRight, CalendarX2, Info, Shield, Zap } from "lucide-react";
+import { ArrowDown, ArrowRight, CalendarX2, Info, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardLabel } from "@/components/ui/card";
@@ -137,7 +137,7 @@ export function CascadeSimulation({
         <p className="flex items-start gap-1.5 text-xs text-ink-faint">
           <Info className="mt-px size-3.5 shrink-0" />
           {affectedNumbers.length > 0
-            ? `Применение сдвига отправит уведомления ответственным за задачи ${affectedNumbers
+            ? `Сдвиг затронет задачи ${affectedNumbers
                 .map((number) => `#${number}`)
                 .join(", ")}.`
             : "Кроме самой задачи сдвиг ничего не затрагивает."}
@@ -148,33 +148,18 @@ export function CascadeSimulation({
             {canApply ? "Отмена" : "Сбросить"}
           </Button>
           {canApply ? (
-            <>
-              <Button
-                variant="soft"
-                onClick={() => onApply(true)}
-                // Показан уже применённый сдвиг: повторное нажатие сдвинуло бы
-                // цепочку ещё раз. Для нового применения нужен новый расчёт.
-                disabled={isApplying || simulation.applied || simulation.bufferAvailableDays <= 0}
-                title={
-                  simulation.bufferAvailableDays <= 0
-                    ? "Резерва нет — компенсировать сдвиг нечем"
-                    : undefined
-                }
-              >
-                <Shield />
-                Компенсировать из резерва
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => onApply(false)}
-                disabled={isApplying || simulation.applied}
-              >
-                <Zap />
-                {isApplying
-                  ? "Применяем…"
-                  : `Применить сдвиг цепочки (${formatSigned(simulation.shiftDays)}д)`}
-              </Button>
-            </>
+            <Button
+              variant="danger"
+              onClick={() => onApply(false)}
+              // Показан уже применённый сдвиг: повторное нажатие сдвинуло бы
+              // цепочку ещё раз. Для нового применения нужен новый расчёт.
+              disabled={isApplying || simulation.applied}
+            >
+              <Zap />
+              {isApplying
+                ? "Применяем…"
+                : `Применить сдвиг цепочки (${formatSigned(simulation.shiftDays)}д)`}
+            </Button>
           ) : null}
         </div>
       </CardBody>

@@ -22,7 +22,7 @@ import { getStoredUser } from "@/lib/session";
 import type { AccessLevel, ProjectMember, ProjectRole } from "@/types";
 
 const ROLE_OPTIONS: { value: ProjectRole; label: string }[] = [
-  { value: "project_manager", label: "Руководитель проекта" },
+  { value: "project_manager", label: "Руководитель" },
   { value: "analyst", label: "Бизнес-аналитик" },
   { value: "developer", label: "Разработчик" },
   { value: "curator", label: "Куратор" },
@@ -200,10 +200,13 @@ export function TeamManager({
                 >
                   {ACCESS_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
-                      {option.label} — {option.hint}
+                      {option.label}
                     </option>
                   ))}
                 </Select>
+                <p className="mt-1 text-xs text-ink-faint">
+                  {ACCESS_OPTIONS.find((option) => option.value === accessLevel)?.hint}
+                </p>
               </div>
 
               <div className="flex items-end">

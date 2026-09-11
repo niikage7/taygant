@@ -12,7 +12,17 @@ import { formatDayMonth } from "@/lib/format";
 import { TASK_STATUS_META } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
 import type { GanttRow } from "@/lib/gantt-rows";
-import type { Task, TaskDependency } from "@/types";
+import type { Task, TaskDependency, TaskStatus } from "@/types";
+
+/**
+ * Короткие подписи для статусов, чья полная надпись (`TASK_STATUS_META`) шире
+ * колонки «Статус» (`w-24`) и заезжала на соседнюю колонку. Полный текст
+ * остаётся доступен через `title` бейджа.
+ */
+const STATUS_BADGE_SHORT_LABEL: Partial<Record<TaskStatus, string>> = {
+  blocked: "Блок.",
+  overdue: "Просроч.",
+};
 
 /** Сколько моноширинных знаков влезает в колонку «Пред.» — «#5, #6». */
 const PREDECESSORS_MAX_CHARS = 6;
@@ -233,7 +243,7 @@ export function TaskTable({
 
               {compact ? null : (
               <>
-              <span className="flex w-30 shrink-0 items-center gap-1.5">
+              <span className="flex w-30 shrink-0 items-center gap-1.5 pr-2">
                 {task.assignee ? (
                   <UserHoverCard user={task.assignee}>
                     <span className="flex min-w-0 items-center gap-1.5">
@@ -272,8 +282,16 @@ export function TaskTable({
                     Крит. путь
                   </Badge>
                 ) : (
-                  <Badge tone={status.tone} size="sm" dot={status.tone !== "brand"}>
-                    {status.label}
+                  // «Заблокирована» и «Просрочена» шире колонки w-24 и заезжали
+                  // на соседнюю — в бейдже короткая подпись, полная остаётся в
+                  // нативном title.
+                  <Badge
+                    tone={status.tone}
+                    size="sm"
+                    dot={status.tone !== "brand"}
+                    title={status.label}
+                  >
+                    {STATUS_BADGE_SHORT_LABEL[task.status] ?? status.label}
                   </Badge>
                 )}
               </span>

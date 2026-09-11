@@ -1,9 +1,21 @@
 "use client";
 
 import { addDays, differenceInCalendarDays, format, parseISO } from "date-fns";
-import { CalendarClock, CircleAlert, Plus, TriangleAlert, Undo2, User, Waypoints, X } from "lucide-react";
+import {
+  CalendarClock,
+  CircleAlert,
+  FilterX,
+  Plus,
+  TriangleAlert,
+  Undo2,
+  User,
+  Waypoints,
+  X,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
+import { EmptyState } from "@/components/app/page-state";
 import { CreateTaskDialog } from "@/components/gantt/create-task-dialog";
 import { buildGanttRows } from "@/lib/gantt-rows";
 import { TaskTable } from "@/components/gantt/task-table";
@@ -74,6 +86,7 @@ export function GanttBoard({
   currentUserId?: string;
   today: string;
 }) {
+  const router = useRouter();
   const [scale, setScale] = useState<TimeScale>("weeks");
   const [filters, setFilters] = useState<Filter[]>([]);
   const [alertVisible, setAlertVisible] = useState(true);
@@ -160,7 +173,10 @@ export function GanttBoard({
     const endDate = task.isMilestone
       ? startDate
       : addWorkdays(calendar, startDate, workdaysAfter(calendar, task.startDate, task.endDate));
-    const cascade = access.isFull;
+    // Каскад требует и полного доступа, и включённого в настройках проекта
+    // автопересчёта — галочка «Включить автоматический пересчёт зависимых
+    // задач» из мастера проекта иначе ни на что не влияла бы.
+    const cascade = access.isFull && project.autoRecalculateDependents;
 
     // Каскад сам отодвинет последователей, поэтому при нём сломать можно только
     // связь с предшественниками; PATCH не двигает никого — проверяем обе стороны.
@@ -189,6 +205,8 @@ export function GanttBoard({
     restoreDates.mutate(pendingMove.restore, { onSuccess: () => setPendingMove(null) });
   };
 
+  const hasActiveFilters = filters.length > 0;
+
   const visibleTasks = tasks.filter((task) => {
     if (filters.includes("mine") && task.assignee?.id !== currentUserId) return false;
     if (filters.includes("critical") && !task.isCriticalPath) return false;
@@ -198,7 +216,15 @@ export function GanttBoard({
 
   // Порядок строк считаем один раз: реестр и таймлайн обязаны совпадать
   // построчно, иначе отрезки уедут относительно названий.
-  const rows = buildGanttRows(visibleTasks, milestones, collapsed);
+  const allRows = buildGanttRows(visibleTasks, milestones, collapsed);
+  // Без фильтров пустая веха — честное отображение реального состояния
+  // проекта (в неё правда ещё ничего не привязали). При активном фильтре
+  // пустая группа — просто всё, что под ней было, отфильтровано, и держать
+  // такой заголовок на экране незачем.
+  const rows = hasActiveFilters
+    ? allRows.filter((row) => row.kind !== "milestone" || row.childCount > 0)
+    : allRows;
+  const filteredToEmpty = hasActiveFilters && visibleTasks.length === 0;
 
   const criticalTask = tasks.find(
     (task) => task.isCriticalPath && task.planVsActualDeviationDays < 0,
@@ -248,6 +274,7 @@ export function GanttBoard({
           </p>
           <button
             type="button"
+            onClick={() => router.push(`/tasks/${criticalTask.id}`)}
             className="shrink-0 rounded-control text-13 font-semibold text-brand hover:text-brand-hover focus-visible:focus-ring"
           >
             Оптимизировать связи
@@ -307,58 +334,76 @@ export function GanttBoard({
       ) : null}
 
       {pendingMove ? (
-        <ShiftSummary
-          move={pendingMove}
-          isUndoing={restoreDates.isPending}
-          onUndo={handleUndoMove}
-          onClose={() => setPendingMove(null)}
-        />
-      ) : null}
-
-      <div className="overflow-hidden rounded-card bg-surface shadow-card" data-tour="gantt">
-        <div
-          ref={scrollRef}
-          className="flex max-h-[calc(100dvh-20rem)] min-h-[18rem] overflow-auto"
-        >
-          <TaskTable
-            rows={rows}
-            allTasks={tasks}
-            dependencies={dependencies}
-            collapsed={collapsed}
-            onToggleCollapse={toggleCollapse}
-            highlightCriticalPath={project.highlightCriticalPath}
-            compact={compact}
-          />
-          <Timeline
-            rows={rows}
-            dependencies={dependencies}
-            milestones={milestones}
-            scale={scale}
-            startDate={project.startDate}
-            endDate={project.deadline}
-            today={today}
-            highlightCriticalPath={project.highlightCriticalPath}
-            canMoveTask={access.canEditTask}
-            onTaskMove={handleTaskMove}
-            scrollRef={scrollRef}
-            frozenWidth={compact ? TASK_TABLE_COMPACT_WIDTH : TASK_TABLE_WIDTH}
+        // Toast поверх диаграммы, вне потока документа: в потоке сводка сдвигала
+        // бы график вниз при появлении, и только что отпущенная полоса уезжала
+        // бы из-под курсора.
+        <div className="fixed bottom-4 left-1/2 z-50 w-[min(640px,calc(100vw-2rem))] -translate-x-1/2">
+          <ShiftSummary
+            move={pendingMove}
+            isUndoing={restoreDates.isPending}
+            onUndo={handleUndoMove}
+            onClose={() => setPendingMove(null)}
           />
         </div>
-        {access.isFull ? (
-          <CreateTaskDialog
-            projectId={project.id}
-            trigger={
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-13 text-ink-faint transition-colors hover:bg-surface-subtle hover:text-ink-muted focus-visible:focus-ring"
-              >
-                <Plus className="size-4" />
-                Добавить задачу или веху…
-              </button>
-            }
-          />
-        ) : null}{" "}
-      </div>
+      ) : null}
+
+      {filteredToEmpty ? (
+        <EmptyState
+          icon={FilterX}
+          title="Нет задач по выбранным фильтрам"
+          description="Попробуйте отключить один из фильтров или сбросить их все."
+          action={
+            <Button variant="secondary" onClick={() => setFilters([])}>
+              Сбросить фильтры
+            </Button>
+          }
+        />
+      ) : (
+        <div className="overflow-hidden rounded-card bg-surface shadow-card" data-tour="gantt">
+          <div
+            ref={scrollRef}
+            className="flex max-h-[calc(100dvh-20rem)] min-h-[18rem] overflow-auto"
+          >
+            <TaskTable
+              rows={rows}
+              allTasks={tasks}
+              dependencies={dependencies}
+              collapsed={collapsed}
+              onToggleCollapse={toggleCollapse}
+              highlightCriticalPath={project.highlightCriticalPath}
+              compact={compact}
+            />
+            <Timeline
+              rows={rows}
+              dependencies={dependencies}
+              milestones={milestones}
+              scale={scale}
+              startDate={project.startDate}
+              endDate={project.deadline}
+              today={today}
+              highlightCriticalPath={project.highlightCriticalPath}
+              canMoveTask={access.canEditTask}
+              onTaskMove={handleTaskMove}
+              scrollRef={scrollRef}
+              frozenWidth={compact ? TASK_TABLE_COMPACT_WIDTH : TASK_TABLE_WIDTH}
+            />
+          </div>
+          {access.isFull ? (
+            <CreateTaskDialog
+              projectId={project.id}
+              trigger={
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-13 text-ink-faint transition-colors hover:bg-surface-subtle hover:text-ink-muted focus-visible:focus-ring"
+                >
+                  <Plus className="size-4" />
+                  Добавить задачу или веху…
+                </button>
+              }
+            />
+          ) : null}{" "}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-ink-faint">
         <span className="font-semibold tracking-wider uppercase">Легенда связей:</span>
@@ -373,6 +418,20 @@ export function GanttBoard({
         </span>
         <span className="flex items-center gap-1.5 text-accent">
           <span className="size-2.5 rotate-45 rounded-[1px] bg-accent" /> Контрольная точка проекта
+        </span>
+      </div>
+
+      <div className="flex w-full flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-ink-faint">
+        <span className="font-semibold tracking-wider uppercase">Легенда полос:</span>
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-[1px] bg-success" /> Готово
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-[1px] bg-warning" /> В плане или в работе
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-[1px] bg-danger" /> Критический путь, скоро дедлайн или
+          заблокирована
         </span>
       </div>
     </div>
@@ -445,7 +504,7 @@ function ShiftSummary({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-control px-3 py-2.5 text-[13px]",
+        "flex items-center gap-3 rounded-control px-3 py-2.5 text-[13px] shadow-popover",
         tone === "danger" ? "bg-danger-tint text-danger" : "bg-brand-tint text-brand",
       )}
     >
