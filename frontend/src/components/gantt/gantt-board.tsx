@@ -360,9 +360,14 @@ export function GanttBoard({
         />
       ) : (
         <div className="overflow-hidden rounded-card bg-surface shadow-card" data-tour="gantt">
+          {/* items-start обязателен: по умолчанию однострочный flex растягивает
+              реестр и таймлайн только до max-h контейнера, а не до высоты всех
+              строк. Ниже видимой области у реестра кончался фон, и при прокрутке
+              вниз сквозь него проступала сетка таймлайна, а шапки переставали
+              примораживаться. */}
           <div
             ref={scrollRef}
-            className="flex max-h-[calc(100dvh-20rem)] min-h-[18rem] overflow-auto"
+            className="flex max-h-[calc(100dvh-20rem)] min-h-[18rem] items-start overflow-auto"
           >
             <TaskTable
               rows={rows}
