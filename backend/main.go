@@ -16,10 +16,6 @@ const dbStartupTimeout = 30 * time.Second
 func main() {
 	cfg := config.Load()
 
-	if cfg.UsesDevJWTSecret() {
-		log.Println("ВНИМАНИЕ: JWT_SECRET не задан — токены подписываются дефолтным ключом из репозитория")
-	}
-
 	db, err := database.Connect(cfg.DatabaseURL, dbStartupTimeout)
 	if err != nil {
 		log.Fatalf("подключение к postgres: %v", err)

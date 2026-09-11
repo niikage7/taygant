@@ -58,12 +58,3 @@ func TestInvalidNumbersFallBackToDefaults(t *testing.T) {
 		t.Fatal("нераспознанный bool не заменился дефолтом")
 	}
 }
-
-func TestUsesDevJWTSecret(t *testing.T) {
-	if !(Config{JWTSecret: devJWTSecret}).UsesDevJWTSecret() {
-		t.Fatal("дефолтный ключ не распознан")
-	}
-	if (Config{JWTSecret: "настоящий-секрет"}).UsesDevJWTSecret() {
-		t.Fatal("собственный ключ принят за дефолтный")
-	}
-}

@@ -14,6 +14,7 @@
 #
 # Что настроить в GitHub (Settings → Secrets and variables → Actions):
 #   - секрет JWT_SECRET — ключ подписи токенов на сервере (openssl rand -hex 32);
+#   - секрет POSTGRES_PASSWORD — пароль от базы на сервере (openssl rand -hex 24);
 #   - переменная APP_URL (необязательно) — адрес приложения для ссылки в отчёте деплоя.
 
 name: CI/CD
@@ -343,6 +344,11 @@ jobs:
       # compose.ci.yml снимает публикацию портов — они заняты задеплоенной версией.
       COMPOSE_FILE: docker-compose.yml:.github/ci/compose.ci.yml
       JWT_SECRET: ci-only-${{ github.run_id }}-not-a-real-secret
+      POSTGRES_USER: taygant
+      POSTGRES_PASSWORD: ci-only-${{ github.run_id }}-not-a-real-secret
+      POSTGRES_DB: taygant
+      # Смоук-тест логинится демо-пользователем — сиду в CI нужно быть включённым.
+      SEED_DEMO_DATA: "true"
       SMOKE_DEMO_LOGIN: "true"
     steps:
       - name: 📥 Код
@@ -436,6 +442,9 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: taygant
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      POSTGRES_USER: taygant
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_DB: taygant
     steps:
       - name: 📥 Код
         uses: actions/checkout@v7
@@ -454,7 +463,11 @@ jobs:
           if [ "${#JWT_SECRET}" -lt 32 ]; then
             echo "::warning title=Короткий JWT_SECRET::Ключ короче 32 символов — токены проще подделать. Сгенерируйте новый: openssl rand -hex 32"
           fi
-          echo "✅ JWT_SECRET задан и не совпадает с ключом для разработки"
+          if [ -z "$POSTGRES_PASSWORD" ]; then
+            echo "::error title=Нет секрета POSTGRES_PASSWORD::Добавьте его: Settings → Secrets and variables → Actions → New repository secret. Значение: openssl rand -hex 24"
+            exit 1
+          fi
+          echo "✅ JWT_SECRET и POSTGRES_PASSWORD заданы"
 
       - name: 📸 Запоминаем текущую версию для отката
         id: snapshot

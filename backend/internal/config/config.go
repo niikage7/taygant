@@ -4,6 +4,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -37,7 +38,14 @@ type Config struct {
 }
 
 // Load читает конфигурацию из окружения, подставляя значения по умолчанию.
+// JWT_SECRET обязателен: без него приложение не стартует, чтобы токены
+// никогда не подписывались общеизвестным ключом из репозитория.
 func Load() Config {
+	jwtSecret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET не задан: сгенерируйте свой ключ (openssl rand -hex 32) и укажите его в .env")
+	}
+
 	return Config{
 		Port:            envString("APP_PORT", "4000"),
 		AllowedOrigins:  envOrigins("ALLOWED_ORIGINS", "http://localhost:3000"),
@@ -45,21 +53,11 @@ func Load() Config {
 		RateLimitMax:    envInt("RATE_LIMIT_MAX", 300),
 		RateLimitWindow: envDuration("RATE_LIMIT_WINDOW", time.Minute),
 		DatabaseURL:     envString("DATABASE_URL", "postgres://taygant:taygant@localhost:5432/taygant?sslmode=disable"),
-		JWTSecret:       envString("JWT_SECRET", devJWTSecret),
+		JWTSecret:       jwtSecret,
 		AccessTokenTTL:  envDuration("ACCESS_TOKEN_TTL", 24*time.Hour),
 		RefreshTokenTTL: envDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
-		SeedDemoData:    envBool("SEED_DEMO_DATA", true),
+		SeedDemoData:    envBool("SEED_DEMO_DATA", false),
 	}
-}
-
-// devJWTSecret — заведомо небезопасный ключ для локального запуска без .env.
-// Вынесен в константу, чтобы UsesDevJWTSecret мог его распознать и предупредить.
-const devJWTSecret = "dev-only-insecure-secret-change-me"
-
-// UsesDevJWTSecret сообщает, что подпись токенов идёт дефолтным ключом из репозитория.
-// Для хакатонного демо это допустимо, но main обязан написать об этом в лог.
-func (c Config) UsesDevJWTSecret() bool {
-	return c.JWTSecret == devJWTSecret
 }
 
 func envString(key, fallback string) string {

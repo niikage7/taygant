@@ -16,9 +16,9 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: taygant
-      POSTGRES_PASSWORD: taygant
-      POSTGRES_DB: taygant
+      POSTGRES_USER: ${POSTGRES_USER:?задайте POSTGRES_USER в файле .env (образец — .env.example)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в файле .env (сгенерировать — openssl rand -hex 24)}
+      POSTGRES_DB: ${POSTGRES_DB:?задайте POSTGRES_DB в файле .env (образец — .env.example)}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -26,7 +26,7 @@ services:
     healthcheck:
       # backend стартует одновременно с БД и без этой проверки успел бы
       # отвалиться на первом подключении.
-      test: ["CMD-SHELL", "pg_isready -U taygant -d taygant"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -40,13 +40,15 @@ services:
         condition: service_healthy
     environment:
       APP_PORT: "4000"
-      DATABASE_URL: "postgres://taygant:taygant@postgres:5432/taygant?sslmode=disable"
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
       # Обязателен: без него compose остановится с понятной ошибкой, а не
       # запустит бэкенд с общеизвестным ключом из репозитория.
       JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET в файле .env рядом с docker-compose.yml (образец — .env.example)}
       ACCESS_TOKEN_TTL: "24h"
       REFRESH_TOKEN_TTL: "720h"
-      SEED_DEMO_DATA: "true"
+      # По умолчанию выключено: пустая БД без демо-пользователей и демо-проекта.
+      # Включить для локальной демонстрации — SEED_DEMO_DATA=true в .env.
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       ALLOWED_ORIGINS: "http://localhost:3000"
       RATE_LIMIT_MAX: "300"
       RATE_LIMIT_WINDOW: "1m"
