@@ -264,6 +264,52 @@ export function useDeleteDependency(taskId: string) {
   });
 }
 
+/**
+ * Массовое создание связей «работа → задача-веха»: каждая из `predecessorIds`
+ * становится предшественником `successorTaskId` (FS, без лага).
+ *
+ * Эндпоинта на несколько связей нет — по запросу на связь, параллельно. Бэкенд
+ * проверяет цикл и дубликат для каждой связи отдельно, поэтому ошибки
+ * собираются списком, а удавшиеся связи остаются: как и в
+ * useAssignTasksToMilestone, откатывать их хуже, чем сообщить о частичном результате.
+ */
+export function useLinkPredecessors() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      successorTaskId,
+      predecessorIds,
+    }: {
+      successorTaskId: string;
+      predecessorIds: string[];
+    }) => {
+      const results = await Promise.allSettled(
+        predecessorIds.map((relatedTaskId) =>
+          dependenciesService.create(successorTaskId, {
+            relatedTaskId,
+            direction: "predecessor",
+            type: "FS",
+            lagDays: 0,
+          }),
+        ),
+      );
+      return results.flatMap((result, index) =>
+        result.status === "rejected"
+          ? [{ taskId: predecessorIds[index], error: result.reason as unknown }]
+          : [],
+      );
+    },
+    // Связь меняет карточки обеих задач, реестр Ганта и критический путь.
+    onSuccess: (_errors, { successorTaskId, predecessorIds }) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        ...[successorTaskId, ...predecessorIds].map((id) =>
+          queryClient.invalidateQueries({ queryKey: queryKeys.task(id) }),
+        ),
+      ]),
+  });
+}
+
 export function useAddChecklistItem(taskId: string) {
   const invalidate = useTaskInvalidation(taskId);
   return useMutation({

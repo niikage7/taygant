@@ -5,6 +5,7 @@ import { addDays, format } from "date-fns";
 import { Diamond, ListTodo, Plus, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { TaskMultiPicker } from "@/components/task/task-multi-picker";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
@@ -12,18 +13,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useCreateTask, useMilestones, useProjectMembers } from "@/data/queries";
+import {
+  useCreateTask,
+  useGantt,
+  useLinkPredecessors,
+  useMilestones,
+  useProjectMembers,
+  useTasks,
+} from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
+import { successorsReachableFrom } from "@/lib/milestone-links";
 import { cn } from "@/lib/utils";
 
 const toIso = (date: Date) => format(date, "yyyy-MM-dd");
 
 
 /**
- * Создание задачи проекта.
+ * Создание задачи проекта вместе со связями.
  *
- * Предшественника можно указать сразу: бэкенд принимает связи в теле создания
- * (`predecessors`), и это избавляет от второго шага «создать, потом связать».
+ * Предшественники уходят в теле создания (`predecessors`): у обычной задачи —
+ * «идёт после», у вехи — список работ, которые к ней ведут. Бэкенд создаёт
+ * задачу и связи одной транзакцией. «Ведёт к вехе» у обычной задачи — связь, где
+ * новая задача сама предшественник: в теле создания её не выразить, поэтому это
+ * второй запрос сразу после создания.
  */
 export function CreateTaskDialog({
   projectId,
@@ -41,6 +53,10 @@ export function CreateTaskDialog({
   const [endDate, setEndDate] = useState(() => toIso(addDays(new Date(), 5)));
   const [isMilestone, setIsMilestone] = useState(false);
   const [milestoneId, setMilestoneId] = useState("");
+  const [predecessorId, setPredecessorId] = useState("");
+  const [leadsToMilestoneTaskId, setLeadsToMilestoneTaskId] = useState("");
+  const [milestonePredecessorIds, setMilestonePredecessorIds] = useState<string[]>([]);
+  const [linkWarning, setLinkWarning] = useState<string | null>(null);
 
   const members = useProjectMembers(projectId);
   const createTask = useCreateTask(projectId);
@@ -48,18 +64,55 @@ export function CreateTaskDialog({
   const milestones = useMilestones(projectId);
   const projectMilestones = milestones.data ?? [];
 
+  const projectTasks = useTasks(projectId).data ?? [];
+  const dependencies = useGantt(projectId, "weeks").data?.dependencies ?? [];
+  const linkPredecessors = useLinkPredecessors();
+
+  // Веха M недопустима, если выбранный предшественник P уже стоит после неё:
+  // M → … → P → новая задача → M замкнуло бы цикл, и второй запрос упал бы уже
+  // после того, как задача создана.
+  const leadsToWouldCycle = (milestoneTaskId: string, afterTaskId: string) =>
+    Boolean(afterTaskId) &&
+    (milestoneTaskId === afterTaskId ||
+      successorsReachableFrom(milestoneTaskId, dependencies).has(afterTaskId));
+  const hasMilestoneTasks = projectTasks.some((task) => task.isMilestone);
+  const milestoneTaskOptions = projectTasks.filter(
+    (task) => task.isMilestone && !leadsToWouldCycle(task.id, predecessorId),
+  );
+
   const validRange = endDate >= startDate;
-  const canSubmit = title.trim().length > 0 && validRange && !createTask.isPending;
+  const canSubmit =
+    title.trim().length > 0 && validRange && !createTask.isPending && !linkPredecessors.isPending;
 
   function reset() {
+    // Тип тоже сбрасываем: после создания вехи следующий диалог иначе открывался
+    // бы сразу на «Вехе», и обычную задачу легко было создать вехой по ошибке.
+    setIsMilestone(false);
     setTitle("");
     setDescription("");
     setAssigneeId("");
     setMilestoneId("");
+    setPredecessorId("");
+    setLeadsToMilestoneTaskId("");
+    setMilestonePredecessorIds([]);
+  }
+
+  function changePredecessor(nextId: string) {
+    setPredecessorId(nextId);
+    // Новый предшественник мог сделать выбранную веху циклом — сбрасываем её, а
+    // не отправляем связь, которую бэкенд заведомо отклонит.
+    if (leadsToMilestoneTaskId && leadsToWouldCycle(leadsToMilestoneTaskId, nextId)) {
+      setLeadsToMilestoneTaskId("");
+    }
   }
 
   function submit() {
     if (!canSubmit) return;
+    setLinkWarning(null);
+    const createdTitle = title.trim();
+    const leadsTo = isMilestone ? "" : leadsToMilestoneTaskId;
+    const predecessorIds = isMilestone ? milestonePredecessorIds : predecessorId ? [predecessorId] : [];
+
     createTask.mutate(
       {
         title: title.trim(),
@@ -70,11 +123,38 @@ export function CreateTaskDialog({
         endDate: isMilestone ? startDate : endDate,
         isMilestone,
         milestoneId: milestoneId || undefined,
+        predecessors:
+          predecessorIds.length > 0
+            ? predecessorIds.map((taskId) => ({ taskId, type: "FS" as const, lagDays: 0 }))
+            : undefined,
       },
       {
-        onSuccess: () => {
-          setOpen(false);
+        onSuccess: (created) => {
           reset();
+          if (!leadsTo) {
+            setOpen(false);
+            return;
+          }
+          linkPredecessors.mutate(
+            { successorTaskId: leadsTo, predecessorIds: [created.id] },
+            {
+              onSuccess: (errors) => {
+                if (errors.length === 0) {
+                  setOpen(false);
+                  return;
+                }
+                // Задача уже создана — закрыть диалог молча значило бы потерять
+                // сообщение о том, что связи нет.
+                setLinkWarning(
+                  `Задача «${createdTitle}» создана, но не связана с вехой: ${toUserMessage(
+                    errors[0].error,
+                    {},
+                    "не удалось создать связь",
+                  )}. Свяжите их на карточке вехи.`,
+                );
+              },
+            },
+          );
         },
       },
     );
@@ -85,7 +165,10 @@ export function CreateTaskDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) createTask.reset();
+        if (!next) {
+          createTask.reset();
+          setLinkWarning(null);
+        }
       }}
     >
       <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
@@ -197,6 +280,55 @@ export function CreateTaskDialog({
               ) : null}
             </div>
 
+            {isMilestone ? (
+              <div className="space-y-1.5">
+                <Label>Задачи, ведущие к вехе</Label>
+                <TaskMultiPicker
+                  label="Задачи, ведущие к вехе"
+                  tasks={projectTasks}
+                  selected={milestonePredecessorIds}
+                  onChange={setMilestonePredecessorIds}
+                  lateAfter={startDate}
+                  emptyText="В проекте пока нет задач — работы можно привязать позже на карточке вехи."
+                />
+              </div>
+            ) : projectTasks.length > 0 ? (
+              <div className={cn("grid gap-3", hasMilestoneTasks && "sm:grid-cols-2")}>
+                <div className="space-y-1.5">
+                  <Label htmlFor="task-predecessor">Идёт после задачи</Label>
+                  <Select
+                    id="task-predecessor"
+                    value={predecessorId}
+                    onChange={(event) => changePredecessor(event.target.value)}
+                  >
+                    <option value="">Ни после какой</option>
+                    {projectTasks.map((task) => (
+                      <option key={task.id} value={task.id}>
+                        #{task.wbsNumber} {task.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                {hasMilestoneTasks ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="task-leads-to">Ведёт к вехе</Label>
+                    <Select
+                      id="task-leads-to"
+                      value={leadsToMilestoneTaskId}
+                      onChange={(event) => setLeadsToMilestoneTaskId(event.target.value)}
+                    >
+                      <option value="">Ни к какой</option>
+                      {milestoneTaskOptions.map((task) => (
+                        <option key={task.id} value={task.id}>
+                          #{task.wbsNumber} {task.title}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {projectMilestones.length > 0 ? (
               <div className="space-y-1.5">
                 <Label htmlFor="task-milestone">Контрольная точка</Label>
@@ -225,6 +357,8 @@ export function CreateTaskDialog({
                 )}
               </Alert>
             ) : null}
+
+            {linkWarning ? <Alert tone="warning">{linkWarning}</Alert> : null}
 
             <div className="flex justify-end gap-2 pt-1">
               <Dialog.Close asChild>

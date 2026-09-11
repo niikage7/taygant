@@ -1,10 +1,12 @@
 "use client";
 
-import { ArrowLeftToLine, ArrowRightFromLine, Trash2 } from "lucide-react";
+import { ArrowLeftToLine, ArrowRightFromLine, Link2, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import { AddDependencyDialog } from "@/components/task/add-dependency-dialog";
+import { LinkPredecessorsDialog } from "@/components/task/link-predecessors-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDeleteDependency } from "@/data/queries";
 import { plural } from "@/lib/format";
@@ -18,7 +20,16 @@ const DEPENDENCY_LABEL: Record<DependencyType, string> = {
   SF: "SF (Начало-к-Окончанию)",
 };
 
-/** Сетевой граф связей задачи: предшественники и последователи. */
+/**
+ * Сетевой граф связей задачи: предшественники и последователи.
+ *
+ * У задачи-вехи вместо двух равноправных колонок — «Задачи, ведущие к вехе» с
+ * массовой привязкой: у события нулевой длительности главный вопрос «что должно
+ * завершиться до него», а выбор направления и типа на каждую связь только мешал.
+ * Последователи у вехи законны (после приёмки — запуск), поэтому они видны, но
+ * только если есть и без кнопки добавления: такую связь естественно заводить с
+ * карточки задачи-последователя.
+ */
 export function DependencyGraph({
   taskId,
   taskNumber,
@@ -30,7 +41,6 @@ export function DependencyGraph({
 }: {
   taskId: string;
   taskNumber: string;
-  /** У вехи входящие связи — это список работ, которые к ней ведут. */
   isMilestone: boolean;
   predecessors: TaskDependency[];
   successors: TaskDependency[];
@@ -40,10 +50,76 @@ export function DependencyGraph({
   canManage: boolean;
 }) {
   const deleteDependency = useDeleteDependency(taskId);
+  const deletingId = deleteDependency.isPending ? deleteDependency.variables : null;
   const linkedTaskIds = [
     ...predecessors.map((item) => item.predecessorTaskId),
     ...successors.map((item) => item.successorTaskId),
   ];
+
+  if (isMilestone) {
+    const milestoneTask = projectTasks.find((task) => task.id === taskId);
+
+    return (
+      <Card>
+        <CardHeader className="items-start">
+          <div>
+            <CardTitle>Задачи, ведущие к вехе #{taskNumber}</CardTitle>
+            <p className="mt-0.5 text-13 text-ink-muted">
+              Веха наступит, когда завершатся эти работы; их сдвиг сдвигает и веху (расчёт по
+              методу критического пути, CPM)
+            </p>
+          </div>
+          {canManage && milestoneTask ? (
+            <LinkPredecessorsDialog
+              milestoneTask={milestoneTask}
+              projectTasks={projectTasks}
+              trigger={
+                <Button variant="secondary" size="sm">
+                  <Link2 />
+                  Привязать задачи
+                </Button>
+              }
+            />
+          ) : null}
+        </CardHeader>
+
+        <CardBody>
+          <div className="space-y-3">
+            <DependencyColumn
+              icon={<ArrowLeftToLine className="size-3.5" />}
+              title="Ведут к вехе"
+              items={predecessors}
+              relatedIdOf={(item) => item.predecessorTaskId}
+              relatedTitleOf={(item) => item.predecessorTitle}
+              projectTasks={projectTasks}
+              onDelete={(id) => deleteDependency.mutate(id)}
+              deletingId={deletingId}
+              canManage={canManage}
+              emptyText={
+                canManage
+                  ? "К вехе пока не ведёт ни одна работа — отметьте их кнопкой «Привязать задачи»."
+                  : "К вехе пока не ведёт ни одна работа."
+              }
+            />
+            {successors.length > 0 ? (
+              <DependencyColumn
+                icon={<ArrowRightFromLine className="size-3.5" />}
+                title="После вехи"
+                items={successors}
+                relatedIdOf={(item) => item.successorTaskId}
+                relatedTitleOf={(item) => item.successorTitle}
+                projectTasks={projectTasks}
+                onDelete={(id) => deleteDependency.mutate(id)}
+                deletingId={deletingId}
+                canManage={canManage}
+                emptyText=""
+              />
+            ) : null}
+          </div>
+        </CardBody>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -67,13 +143,13 @@ export function DependencyGraph({
         <div className="grid gap-3 lg:grid-cols-2">
           <DependencyColumn
             icon={<ArrowLeftToLine className="size-3.5" />}
-            title={isMilestone ? "Задачи, ведущие к вехе" : "Входящие связи (предшественники)"}
+            title="Входящие связи (предшественники)"
             items={predecessors}
             relatedIdOf={(item) => item.predecessorTaskId}
             relatedTitleOf={(item) => item.predecessorTitle}
             projectTasks={projectTasks}
             onDelete={(id) => deleteDependency.mutate(id)}
-            deletingId={deleteDependency.isPending ? deleteDependency.variables : null}
+            deletingId={deletingId}
             canManage={canManage}
             emptyText="Предшественников нет — задача может начаться сразу."
           />
@@ -85,7 +161,7 @@ export function DependencyGraph({
             relatedTitleOf={(item) => item.successorTitle}
             projectTasks={projectTasks}
             onDelete={(id) => deleteDependency.mutate(id)}
-            deletingId={deleteDependency.isPending ? deleteDependency.variables : null}
+            deletingId={deletingId}
             canManage={canManage}
             emptyText="От этой задачи ничего не зависит."
           />
