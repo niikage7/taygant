@@ -38,7 +38,7 @@ export function KpiCards({ data, project }: { data: ProjectDashboard; project: P
             <p className="mt-3 text-3xl font-bold tracking-tight text-ink">
               {Math.round(data.overallProgressPercent)}%
             </p>
-            <p className="mt-2 text-[13px] text-ink-muted">
+            <p className="mt-2 text-13 text-ink-muted">
               {data.milestonesTotal > 0
                 ? `${data.milestonesClosed} из ${data.milestonesTotal} вех закрыто`
                 : "Контрольных точек пока нет"}
@@ -82,7 +82,7 @@ export function KpiCards({ data, project }: { data: ProjectDashboard; project: P
               {schedule.forecastDeviationDays}{" "}
               {plural(schedule.forecastDeviationDays, ["день", "дня", "дней"])}
             </span>
-            <span className="text-[13px] text-ink-muted">прогноз отклонения</span>
+            <span className="text-13 text-ink-muted">прогноз отклонения</span>
           </p>
         </CardBody>
         <CardFooter>
@@ -114,7 +114,7 @@ export function KpiCards({ data, project }: { data: ProjectDashboard; project: P
               ))}
             </div>
           ) : null}
-          <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
+          <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-13">
             <StatusLine color="text-success" value={breakdown.done} label="Выполнено" />
             <StatusLine color="text-warning" value={breakdown.inProgress} label="В работе" />
             <StatusLine color="text-accent-soft" value={breakdown.planned} label="Предстоит" />

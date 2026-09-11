@@ -95,10 +95,10 @@ export function CreateTaskDialog({
         <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100vh-2rem)] w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-card bg-surface p-6 shadow-popover">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <Dialog.Title className="text-[15px] font-semibold text-ink">
+              <Dialog.Title className="text-15 font-semibold text-ink">
                 Новая задача
               </Dialog.Title>
-              <Dialog.Description className="mt-1 text-[13px] text-ink-muted">
+              <Dialog.Description className="mt-1 text-13 text-ink-muted">
                 Задача появится в реестре и на диаграмме Ганта.
               </Dialog.Description>
             </div>
@@ -274,7 +274,7 @@ function TypeOption({
       <span className="min-w-0">
         <span
           className={cn(
-            "block text-[13px] font-semibold",
+            "block text-13 font-semibold",
             active ? "text-brand" : "text-ink",
           )}
         >

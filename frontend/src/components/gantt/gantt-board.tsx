@@ -127,14 +127,14 @@ export function GanttBoard({
       {alertVisible && criticalTask ? (
         <div className="flex items-center gap-3 rounded-control bg-danger-tint px-3 py-2.5">
           <TriangleAlert className="size-4 shrink-0 text-danger" />
-          <p className="min-w-0 flex-1 truncate text-[13px] text-danger">
+          <p className="min-w-0 flex-1 truncate text-13 text-danger">
             <span className="font-semibold">Критический путь под угрозой:</span> Задача #
             {criticalTask.wbsNumber} <span className="font-mono">«{criticalTask.title}»</span> имеет
             отставание. Задержка на {Math.abs(criticalTask.planVsActualDeviationDays)} дн.
           </p>
           <button
             type="button"
-            className="shrink-0 rounded-control text-[13px] font-semibold text-brand hover:text-brand-hover focus-visible:focus-ring"
+            className="shrink-0 rounded-control text-13 font-semibold text-brand hover:text-brand-hover focus-visible:focus-ring"
           >
             Оптимизировать связи
           </button>
@@ -179,7 +179,7 @@ export function GanttBoard({
             trigger={
               <button
                 type="button"
-                className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-[13px] text-ink-faint transition-colors hover:bg-surface-subtle hover:text-ink-muted focus-visible:focus-ring"
+                className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-13 text-ink-faint transition-colors hover:bg-surface-subtle hover:text-ink-muted focus-visible:focus-ring"
               >
                 <Plus className="size-4" />
                 Добавить задачу или веху…
@@ -227,7 +227,7 @@ function FilterChip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-[13px] font-medium transition-colors focus-visible:focus-ring",
+        "flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-13 font-medium transition-colors focus-visible:focus-ring",
         active
           ? "border-transparent bg-brand-tint text-brand"
           : "border-line bg-surface hover:bg-surface-muted",

@@ -40,7 +40,7 @@ export function Segmented<T extends string>({
             aria-checked={active}
             onClick={() => onChange(option.value)}
             className={cn(
-              "rounded-control px-3 py-1 text-[13px] font-medium transition-colors focus-visible:focus-ring",
+              "cursor-pointer rounded-control px-3 py-1 text-13 font-medium transition-colors focus-visible:focus-ring",
               active
                 ? "bg-brand-tint text-brand"
                 : "text-ink-muted hover:bg-surface-muted hover:text-ink",

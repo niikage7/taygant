@@ -21,7 +21,7 @@ export default function NotFound() {
       <h1 className="mt-2 text-2xl font-bold tracking-tight text-ink">
         Страница не найдена
       </h1>
-      <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-ink-muted">
+      <p className="mt-2 max-w-sm text-13 leading-relaxed text-ink-muted">
         Адрес не существует или объект был удалён. Проверьте ссылку или вернитесь
         к обзору проекта.
       </p>

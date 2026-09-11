@@ -29,13 +29,13 @@ export function McpTokenList() {
       </CardHeader>
       <CardBody>
         {tokens.isPending ? (
-          <p className="py-6 text-center text-[13px] text-ink-muted">Загружаем ключи…</p>
+          <p className="py-6 text-center text-13 text-ink-muted">Загружаем ключи…</p>
         ) : tokens.isError ? (
           <Alert tone="danger">
             {toUserMessage(tokens.error, {}, "Не удалось загрузить ключи")}
           </Alert>
         ) : tokens.data.length === 0 ? (
-          <p className="py-6 text-center text-[13px] text-ink-muted">
+          <p className="py-6 text-center text-13 text-ink-muted">
             Ключей пока нет — создайте первый в шаге 1.
           </p>
         ) : (
@@ -61,7 +61,7 @@ function TokenRow({ token }: { token: McpToken }) {
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-semibold text-ink">{token.name}</p>
+        <p className="truncate text-13 font-semibold text-ink">{token.name}</p>
         <p className="mt-0.5 text-xs text-ink-faint">
           <span className="font-mono">tgn_…{token.hint}</span>
           {" · "}создан {formatDateLong(token.createdAt)}

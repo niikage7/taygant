@@ -65,7 +65,7 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
         <CardBody className="flex flex-wrap items-center justify-between gap-3 py-3">
           <nav
             aria-label="Хлебные крошки"
-            className="flex min-w-0 flex-wrap items-center gap-1.5 text-[13px] text-ink-muted"
+            className="flex min-w-0 flex-wrap items-center gap-1.5 text-13 text-ink-muted"
           >
             <Link
               href="/overview"
@@ -265,7 +265,7 @@ function TabButton({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 rounded-control px-3 py-2 text-[13px] transition-colors focus-visible:focus-ring",
+        "flex items-center gap-2 rounded-control px-3 py-2 text-13 transition-colors focus-visible:focus-ring",
         active
           ? "bg-brand-tint font-medium text-brand"
           : "text-ink-muted hover:bg-surface-muted hover:text-ink",

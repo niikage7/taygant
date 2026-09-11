@@ -11,7 +11,7 @@ import remarkBreaks from "remark-breaks";
  */
 const components: Components = {
   h1: ({ children }) => (
-    <h1 className="mb-2 text-[26px] leading-tight font-bold tracking-tight text-ink">
+    <h1 className="mb-2 text-26 leading-tight font-bold tracking-tight text-ink">
       {children}
     </h1>
   ),
@@ -52,7 +52,7 @@ const components: Components = {
   ),
   hr: () => <hr className="mt-10 border-line" />,
   code: ({ children }) => (
-    <code className="rounded-control bg-surface-muted px-1.5 py-0.5 font-mono text-[13px] text-ink">
+    <code className="rounded-control bg-surface-muted px-1.5 py-0.5 font-mono text-13 text-ink">
       {children}
     </code>
   ),

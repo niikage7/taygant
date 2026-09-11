@@ -35,8 +35,11 @@ export function formatSigned(value: number, fractionDigits = 0): string {
   return text;
 }
 
-/** Склонение существительного по числу: дней / день / дня. */
-export function plural(count: number, forms: [string, string, string]): string {
+/**
+ * Склонение существительного по числу для русского языка: forms — [1, 2, 5]
+ * («этап», «этапа», «этапов»). 1 этап, 2 этапа, 5 этапов, 11 этапов, 21 этап.
+ */
+export function pluralize(count: number, forms: [string, string, string]): string {
   const abs = Math.abs(count) % 100;
   const tail = abs % 10;
   if (abs > 10 && abs < 20) return forms[2];
@@ -44,3 +47,11 @@ export function plural(count: number, forms: [string, string, string]): string {
   if (tail === 1) return forms[0];
   return forms[2];
 }
+
+/** «n слово»: число и склонённая форма одной строкой — `pluralizeCount(5, ["этап","этапа","этапов"])` → «5 этапов». */
+export function pluralizeCount(count: number, forms: [string, string, string]): string {
+  return `${count} ${pluralize(count, forms)}`;
+}
+
+/** @deprecated Используйте {@link pluralize} — оставлено для обратной совместимости вызовов. */
+export const plural = pluralize;

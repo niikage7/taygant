@@ -5,11 +5,13 @@ import { cn } from "@/lib/utils";
 
 type AlertTone = "info" | "success" | "warning" | "danger";
 
+// success/warning/danger — текст *-ink, а не сам статусный цвет: на *-tint
+// подложке насыщенный цвет не дотягивает до контраста 4.5:1 (WCAG AA).
 const toneStyles: Record<AlertTone, string> = {
   info: "bg-brand-tint text-brand-ink",
-  success: "bg-success-tint text-ink",
+  success: "bg-success-tint text-success-ink",
   warning: "bg-warning-tint text-warning-ink",
-  danger: "bg-danger-tint text-danger",
+  danger: "bg-danger-tint text-danger-ink",
 };
 
 const toneIcons: Record<AlertTone, ComponentType<{ className?: string }>> = {
@@ -34,7 +36,7 @@ export function Alert({
     <div
       role={tone === "danger" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2 rounded-control px-3 py-2 text-[13px]",
+        "flex items-start gap-2 rounded-control px-3 py-2 text-13",
         toneStyles[tone],
         className,
       )}

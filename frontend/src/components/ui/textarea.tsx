@@ -18,6 +18,7 @@ export function Textarea({
         "w-full rounded-control bg-surface-muted px-3 py-2 text-sm leading-relaxed text-ink",
         "ring-1 ring-transparent outline-none transition-[box-shadow,background-color]",
         "placeholder:text-ink-faint focus:bg-surface focus:ring-brand",
+        "disabled:cursor-not-allowed disabled:opacity-60",
         invalid && "ring-danger focus:ring-danger",
         className,
       )}

@@ -61,9 +61,9 @@ export function TaskHistory({ taskId }: { taskId: string }) {
     <Card>
       <CardBody>
         {history.isPending ? (
-          <p className="py-8 text-center text-[13px] text-ink-muted">Загружаем журнал…</p>
+          <p className="py-8 text-center text-13 text-ink-muted">Загружаем журнал…</p>
         ) : history.data.length === 0 ? (
-          <p className="py-8 text-center text-[13px] text-ink-muted">
+          <p className="py-8 text-center text-13 text-ink-muted">
             Изменений пока нет — журнал заполнится после первой правки задачи.
           </p>
         ) : (
@@ -85,12 +85,12 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
   return (
     <li className="flex gap-3">
       <span className="flex flex-col items-center">
-        <Avatar fullName={entry.actor.fullName} className="size-7 rounded-full text-[10px]" />
+        <Avatar fullName={entry.actor.fullName} className="size-7 rounded-full text-3xs" />
         <span className="mt-1 w-px flex-1 bg-line" />
       </span>
 
       <div className="min-w-0 flex-1 pb-1">
-        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-ink">
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-13 text-ink">
           <span>
             <span className="font-semibold">{entry.actor.fullName}</span> {action}
             {fieldLabel ? <span className="text-ink-muted"> · {fieldLabel}</span> : null}
@@ -113,7 +113,7 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
           </p>
         ) : null}
 
-        <p className="mt-1 font-mono text-[11px] text-ink-faint">
+        <p className="mt-1 font-mono text-2xs text-ink-faint">
           {format(parseISO(entry.createdAt), "d MMMM yyyy, HH:mm", { locale: ru })}
         </p>
       </div>

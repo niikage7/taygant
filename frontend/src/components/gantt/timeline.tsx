@@ -94,7 +94,7 @@ export function Timeline({
             {months.map((month) => (
               <span
                 key={month.key}
-                className="absolute top-0 flex h-6 items-center overflow-hidden px-2 text-[11px] font-bold tracking-wide whitespace-nowrap text-brand uppercase"
+                className="absolute top-0 flex h-6 items-center overflow-hidden px-2 text-2xs font-bold tracking-wide whitespace-nowrap text-brand uppercase"
                 style={{ left: month.left, width: month.width }}
               >
                 {month.width >= MONTH_FULL_LABEL_MIN_WIDTH
@@ -109,7 +109,7 @@ export function Timeline({
             {subs.map((sub) => (
               <span
                 key={sub.key}
-                className="absolute top-0 flex h-6 items-center justify-center border-l border-line text-[10px] text-ink-faint"
+                className="absolute top-0 flex h-6 items-center justify-center border-l border-line text-3xs text-ink-faint"
                 style={{ left: sub.left, width: sub.width }}
               >
                 {sub.label}
@@ -282,7 +282,7 @@ function TaskBar({
         title={`${task.title} · ${format(parseISO(task.startDate), "dd.MM.yyyy")}`}
       >
         <span className="size-3.5 rotate-45 rounded-[2px] bg-brand" />
-        <span className="text-[11px] font-semibold whitespace-nowrap text-brand">
+        <span className="text-2xs font-semibold whitespace-nowrap text-brand">
           {task.title}
         </span>
       </span>
@@ -309,7 +309,7 @@ function TaskBar({
         style={{ width: `${task.progressPercent}%` }}
       />
       {width > 60 ? (
-        <span className="relative z-1 truncate px-2 text-[11px] font-semibold text-white">
+        <span className="relative z-1 truncate px-2 text-2xs font-semibold text-white">
           {task.progressPercent}% · {task.title}
         </span>
       ) : null}

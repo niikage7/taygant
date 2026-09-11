@@ -83,10 +83,10 @@ export function LinkTasksDialog({
         <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-card bg-surface p-6 shadow-popover">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <Dialog.Title className="text-[15px] font-semibold text-ink">
+              <Dialog.Title className="text-15 font-semibold text-ink">
                 Привязать задачи к вехе
               </Dialog.Title>
-              <Dialog.Description className="mt-1 text-[13px] text-ink-muted">
+              <Dialog.Description className="mt-1 text-13 text-ink-muted">
                 Отметьте работы, которые ведут к вехе «{milestoneName}». Прогресс
                 считается по ним.
               </Dialog.Description>
@@ -100,7 +100,7 @@ export function LinkTasksDialog({
           </div>
 
           {available.length === 0 ? (
-            <p className="py-8 text-center text-[13px] text-ink-muted">
+            <p className="py-8 text-center text-13 text-ink-muted">
               Все задачи проекта уже связаны с этой вехой.
             </p>
           ) : (
@@ -119,7 +119,7 @@ export function LinkTasksDialog({
                           )
                         }
                       />
-                      <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
+                      <span className="min-w-0 flex-1 truncate text-13 text-ink">
                         <span className="font-mono text-ink-faint">#{task.wbsNumber}</span>{" "}
                         {task.title}
                       </span>

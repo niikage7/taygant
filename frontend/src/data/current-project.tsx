@@ -4,9 +4,8 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -14,6 +13,48 @@ import { useProjects } from "@/data/queries";
 import type { ProjectSummary } from "@/types";
 
 const STORAGE_KEY = "taygant.currentProjectId";
+
+/**
+ * Мини-хранилище поверх localStorage с оповещением подписчиков. Обычный
+ * `useState` + `useEffect` для первого чтения запрещён линтером
+ * (react-hooks/set-state-in-effect) и всё равно расходился бы на сервере
+ * (localStorage там нет) — useSyncExternalStore решает оба вопроса разом:
+ * на сервере и при первом клиентском рендере отдаёт `null` (совпадает с SSR),
+ * а сразу после гидратации подставляет настоящее значение без ручного setState.
+ */
+const listeners = new Set<() => void>();
+
+/** Выбор, сделанный в этой вкладке: переживает запрет записи в localStorage. */
+let selectedInSession: string | null = null;
+
+function readStoredProjectId(): string | null {
+  if (selectedInSession) return selectedInSession;
+  try {
+    return window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    // Приватный режим может запрещать доступ — тогда просто нет запомненного выбора.
+    return null;
+  }
+}
+
+function writeStoredProjectId(id: string): void {
+  selectedInSession = id;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, id);
+  } catch {
+    // Приватный режим может запрещать запись — выбор тогда живёт до перезагрузки.
+  }
+  listeners.forEach((listener) => listener());
+}
+
+function subscribeStoredProjectId(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function useStoredProjectId(): string | null {
+  return useSyncExternalStore(subscribeStoredProjectId, readStoredProjectId, () => null);
+}
 
 type CurrentProjectValue = {
   projectId: string | undefined;
@@ -38,29 +79,14 @@ const CurrentProjectContext = createContext<CurrentProjectValue | null>(null);
  */
 export function CurrentProjectProvider({ children }: { children: ReactNode }) {
   const projects = useProjects();
-  const [storedId, setStoredId] = useState<string | null>(null);
-
-  // Читаем localStorage в эффекте, а не при рендере: на сервере его нет,
-  // и обращение во время рендера рассинхронизировало бы разметку.
-  useEffect(() => {
-    try {
-      setStoredId(window.localStorage.getItem(STORAGE_KEY));
-    } catch {
-      setStoredId(null);
-    }
-  }, []);
+  const storedId = useStoredProjectId();
 
   const list = useMemo(() => projects.data ?? [], [projects.data]);
   const projectId =
     list.find((project) => project.id === storedId)?.id ?? list[0]?.id;
 
   const selectProject = useCallback((id: string) => {
-    setStoredId(id);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, id);
-    } catch {
-      // Приватный режим может запрещать запись — выбор тогда живёт до перезагрузки.
-    }
+    writeStoredProjectId(id);
   }, []);
 
   const value = useMemo<CurrentProjectValue>(

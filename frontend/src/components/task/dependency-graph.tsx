@@ -50,7 +50,7 @@ export function DependencyGraph({
       <CardHeader className="items-start">
         <div>
           <CardTitle>Сетевой граф связей задачи #{taskNumber}</CardTitle>
-          <p className="mt-0.5 text-[13px] text-ink-muted">
+          <p className="mt-0.5 text-13 text-ink-muted">
             Определяет динамический расчёт сроков по алгоритму Critical Path Method (CPM)
           </p>
         </div>
@@ -124,13 +124,13 @@ function DependencyColumn({
   return (
     <section className="rounded-control border border-line">
       <header className="flex items-start justify-between gap-3 border-b border-line px-3 py-2.5">
-        <h4 className="flex items-start gap-1.5 text-[11px] font-semibold tracking-wider text-ink-muted uppercase">
+        <h4 className="flex items-start gap-1.5 text-2xs font-semibold tracking-wider text-ink-muted uppercase">
           <span className="mt-px text-ink-faint">{icon}</span>
           {title}
         </h4>
         <span
           className={cn(
-            "shrink-0 text-right text-[11px] font-semibold",
+            "shrink-0 text-right text-2xs font-semibold",
             criticalCount > 0 ? "text-danger" : "text-ink-muted",
           )}
         >
@@ -140,7 +140,7 @@ function DependencyColumn({
       </header>
 
       {items.length === 0 ? (
-        <p className="px-3 py-6 text-center text-[13px] text-ink-muted">{emptyText}</p>
+        <p className="px-3 py-6 text-center text-13 text-ink-muted">{emptyText}</p>
       ) : (
         <ul className="space-y-2 p-3">
           {items.map((item) => {
@@ -156,7 +156,7 @@ function DependencyColumn({
                     href={`/tasks/${relatedId}`}
                     className="group min-w-0 rounded-control focus-visible:focus-ring"
                   >
-                    <span className="text-[13px] leading-snug font-medium text-ink group-hover:text-brand">
+                    <span className="text-13 leading-snug font-medium text-ink group-hover:text-brand">
                       {related?.wbsNumber ? (
                         <span className="font-mono text-brand">#{related.wbsNumber} </span>
                       ) : null}
@@ -185,10 +185,10 @@ function DependencyColumn({
                 </div>
 
                 <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="rounded-control bg-surface-muted px-2 py-1 font-mono text-[11px] text-ink-muted">
+                  <span className="rounded-control bg-surface-muted px-2 py-1 font-mono text-2xs text-ink-muted">
                     {DEPENDENCY_LABEL[item.type]}
                   </span>
-                  <span className="font-mono text-[11px] text-ink-faint">
+                  <span className="font-mono text-2xs text-ink-faint">
                     Лаг: {item.lagDays} дн.
                   </span>
                 </p>

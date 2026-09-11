@@ -53,10 +53,10 @@ export function MilestonesDialog({
         <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100vh-2rem)] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-card bg-surface p-6 shadow-popover">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <Dialog.Title className="text-[15px] font-semibold text-ink">
+              <Dialog.Title className="text-15 font-semibold text-ink">
                 Контрольные точки проекта
               </Dialog.Title>
-              <Dialog.Description className="mt-1 text-[13px] text-ink-muted">
+              <Dialog.Description className="mt-1 text-13 text-ink-muted">
                 Обязательства проекта по датам. Задачи к ним не привязываются — для
                 этого используйте спринты или задачу-веху со связями.
               </Dialog.Description>
@@ -74,11 +74,11 @@ export function MilestonesDialog({
 
 
             {milestones.isPending ? (
-              <p className="py-6 text-center text-[13px] text-ink-muted">
+              <p className="py-6 text-center text-13 text-ink-muted">
                 Загружаем вехи…
               </p>
             ) : (milestones.data?.length ?? 0) === 0 ? (
-              <p className="py-6 text-center text-[13px] text-ink-muted">
+              <p className="py-6 text-center text-13 text-ink-muted">
                 Контрольных точек пока нет — добавьте первую.
               </p>
             ) : (
@@ -253,13 +253,13 @@ function MilestoneRow({
       )}
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-ink">
+        <p className="truncate text-13 font-medium text-ink">
           {milestone.code ? (
             <span className="font-mono text-ink-faint">{milestone.code} </span>
           ) : null}
           {milestone.name}
         </p>
-        <p className="mt-0.5 font-mono text-[11px] text-ink-faint">
+        <p className="mt-0.5 font-mono text-2xs text-ink-faint">
           {formatDate(milestone.plannedDate)}
           {milestone.actualDate
             ? ` · достигнута ${formatDate(milestone.actualDate)}`
@@ -270,7 +270,7 @@ function MilestoneRow({
       </div>
 
       {milestone.tasksTotal > 0 ? (
-        <span className="shrink-0 font-mono text-[11px] text-ink-faint">
+        <span className="shrink-0 font-mono text-2xs text-ink-faint">
           {milestone.tasksDone}/{milestone.tasksTotal}
         </span>
       ) : null}

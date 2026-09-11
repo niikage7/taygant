@@ -93,7 +93,7 @@ export function AssistantSetup() {
               <KeyRound className="size-4 text-brand" />
               Шаг 1. Создайте личный ключ
             </CardTitle>
-            <p className="mt-0.5 text-[13px] text-ink-muted">
+            <p className="mt-0.5 text-13 text-ink-muted">
               Ключ — как пароль для ассистента: он работает от вашего имени и видит только ваши
               проекты. Заведите отдельный ключ на каждый редактор — ненужный легко отозвать.
             </p>
@@ -152,7 +152,7 @@ export function AssistantSetup() {
             ariaLabel="Какой ассистент подключаете"
           />
         </CardHeader>
-        <CardBody className="space-y-3 text-[13px] text-ink-muted">
+        <CardBody className="space-y-3 text-13 text-ink-muted">
           {client === "claude" ? (
             <>
               <p>Выполните в терминале:</p>

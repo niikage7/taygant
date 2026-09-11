@@ -21,7 +21,7 @@ export function RiskCard({ risk }: { risk: ProjectRisk }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
-            <h3 className="text-[15px] leading-snug font-semibold text-ink">
+            <h3 className="text-15 leading-snug font-semibold text-ink">
               {risk.title}
             </h3>
             {risk.severity === "critical" ? (
@@ -31,7 +31,7 @@ export function RiskCard({ risk }: { risk: ProjectRisk }) {
             ) : null}
           </div>
           {risk.description ? (
-            <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
+            <p className="mt-2 text-13 leading-relaxed text-ink-muted">
               {risk.description}
             </p>
           ) : null}

@@ -79,7 +79,7 @@ export function ProgressRing({
         y="50%"
         textAnchor="middle"
         dominantBaseline="central"
-        className="fill-brand text-[11px] font-bold"
+        className="fill-brand text-2xs font-bold"
       >
         {Math.round(clamped)}%
       </text>

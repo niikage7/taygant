@@ -40,7 +40,7 @@ export default function GanttPage() {
             </Badge>
           ) : null}
         </h1>
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-ink-muted">
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-13 text-ink-muted">
           <span className="flex items-center gap-1.5">
             <CalendarDays className="size-3.5" />
             {formatDate(project.data.startDate)} — {formatDate(project.data.deadline)} (

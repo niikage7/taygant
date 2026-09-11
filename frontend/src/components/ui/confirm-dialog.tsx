@@ -47,11 +47,11 @@ export function ConfirmDialog({
               <TriangleAlert className="size-5" />
             </span>
             <div className="min-w-0">
-              <Dialog.Title className="text-[15px] font-semibold text-ink">
+              <Dialog.Title className="text-15 font-semibold text-ink">
                 {title}
               </Dialog.Title>
               <Dialog.Description asChild>
-                <div className="mt-1 text-[13px] leading-relaxed text-ink-muted">
+                <div className="mt-1 text-13 leading-relaxed text-ink-muted">
                   {description}
                 </div>
               </Dialog.Description>
@@ -78,6 +78,7 @@ export function ConfirmDialog({
               variant="danger"
               onClick={() => onConfirm(() => setOpen(false))}
               disabled={isPending}
+              loading={isPending}
             >
               {isPending ? pendingLabel : confirmLabel}
             </Button>

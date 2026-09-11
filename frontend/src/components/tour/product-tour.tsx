@@ -2,7 +2,7 @@
 
 import { ArrowLeft, ArrowRight, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { TOUR_STEPS, markTourCompleted } from "@/lib/tour";
@@ -12,6 +12,21 @@ const CARD_WIDTH = 320;
 const GAP = 12;
 
 type Rect = { top: number; left: number; width: number; height: number };
+
+/**
+ * Сайдбар рендерит одно и то же содержимое дважды — в постоянной панели
+ * (скрыта ниже `lg`) и в выезжающей панели на мобильных, — поэтому в DOM
+ * может быть два элемента с одним `data-tour`. `querySelector` вернул бы
+ * первый по порядку документа, а он как раз может быть скрытым; берём первый
+ * действительно отрисованный (getClientRects().length > 0).
+ */
+function findVisibleTourTarget(target: string): HTMLElement | null {
+  const candidates = document.querySelectorAll<HTMLElement>(`[data-tour="${target}"]`);
+  for (const candidate of candidates) {
+    if (candidate.getClientRects().length > 0) return candidate;
+  }
+  return null;
+}
 
 /**
  * Обучающий тур: подсвечивает элементы по атрибуту `data-tour` и объясняет их.
@@ -47,9 +62,10 @@ export function ProductTour({ onClose }: { onClose: () => void }) {
 
     const locate = () => {
       if (cancelled) return;
-      const element = document.querySelector<HTMLElement>(
-        `[data-tour="${step.target}"]`,
-      );
+      // Ищем видимый экземпляр: например, «nav» и «project-switcher» на узком
+      // экране лежат в закрытой выезжающей панели (display: none), пока её
+      // не открыли, — тур должен пропустить шаг, а не подсветить невидимый блок.
+      const element = findVisibleTourTarget(step.target);
 
       if (!element) {
         // Экран мог ещё не отрисоваться: ждём около двух секунд, потом
@@ -85,9 +101,7 @@ export function ProductTour({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (!step) return;
     const update = () => {
-      const element = document.querySelector<HTMLElement>(
-        `[data-tour="${step.target}"]`,
-      );
+      const element = findVisibleTourTarget(step.target);
       if (!element) return;
       const box = element.getBoundingClientRect();
       setRect({ top: box.top, left: box.left, width: box.width, height: box.height });
@@ -108,6 +122,15 @@ export function ProductTour({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [finish]);
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const hasRect = rect !== null;
+  // Фокус — на карточку тура при каждом новом шаге (а не только при монтировании):
+  // без этого читалка экрана озвучивала бы то, что было в фокусе до тура, а
+  // клавиатурный пользователь не понимал бы, что на экране появился диалог.
+  useEffect(() => {
+    cardRef.current?.focus();
+  }, [index, hasRect]);
+
   if (!step || !rect) return null;
 
   const isLast = index === TOUR_STEPS.length - 1;
@@ -119,10 +142,11 @@ export function ProductTour({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <div className="fixed inset-0 z-[100]" role="dialog" aria-label="Обучающий тур">
+    <div className="fixed inset-0 z-[100]">
       {/* Затемнение с «окном» вокруг цели — одной тенью, без четырёх блоков. */}
       <div
-        className="pointer-events-none absolute rounded-control ring-2 ring-brand transition-all duration-200"
+        aria-hidden
+        className="pointer-events-none absolute rounded-control ring-2 ring-brand transition-all duration-200 motion-reduce:transition-none"
         style={{
           top: rect.top - 4,
           left: rect.left - 4,
@@ -133,34 +157,39 @@ export function ProductTour({ onClose }: { onClose: () => void }) {
       />
 
       <div
+        ref={cardRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Обучающий тур: ${step.title}`}
+        tabIndex={-1}
         className={cn(
-          "absolute w-80 rounded-card bg-surface p-4 shadow-popover",
+          "absolute w-80 rounded-card bg-surface p-4 shadow-popover outline-none",
           !below && "-translate-y-full",
         )}
         style={{ top: cardTop, left: cardLeft }}
       >
         <div className="flex items-start justify-between gap-3">
-          <p className="text-[11px] font-semibold tracking-wider text-brand uppercase">
+          <p className="text-2xs font-semibold tracking-wider text-brand uppercase">
             Шаг {index + 1} из {TOUR_STEPS.length}
           </p>
           <button
             type="button"
             onClick={finish}
             aria-label="Закрыть тур"
-            className="rounded-control text-ink-faint hover:text-ink focus-visible:focus-ring"
+            className="cursor-pointer rounded-control text-ink-faint hover:text-ink focus-visible:focus-ring"
           >
-            <X className="size-4" />
+            <X className="size-4" aria-hidden />
           </button>
         </div>
 
-        <h2 className="mt-2 text-[15px] font-semibold text-ink">{step.title}</h2>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-ink-muted">{step.text}</p>
+        <h2 className="mt-2 text-15 font-semibold text-ink">{step.title}</h2>
+        <p className="mt-1.5 text-13 leading-relaxed text-ink-muted">{step.text}</p>
 
         <div className="mt-4 flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={finish}
-            className="rounded-control text-[13px] text-ink-faint hover:text-ink focus-visible:focus-ring"
+            className="cursor-pointer rounded-control text-13 text-ink-faint hover:text-ink focus-visible:focus-ring"
           >
             Пропустить
           </button>
@@ -172,7 +201,7 @@ export function ProductTour({ onClose }: { onClose: () => void }) {
                 size="sm"
                 onClick={() => setIndex((current) => current - 1)}
               >
-                <ArrowLeft />
+                <ArrowLeft aria-hidden />
                 Назад
               </Button>
             ) : null}
@@ -181,7 +210,7 @@ export function ProductTour({ onClose }: { onClose: () => void }) {
               onClick={() => (isLast ? finish() : setIndex((current) => current + 1))}
             >
               {isLast ? "Готово" : "Далее"}
-              {isLast ? null : <ArrowRight />}
+              {isLast ? null : <ArrowRight aria-hidden />}
             </Button>
           </span>
         </div>

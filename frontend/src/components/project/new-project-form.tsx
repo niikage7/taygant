@@ -45,7 +45,7 @@ import type { ProjectCreateRequest, User, WorkingCalendarType } from "@/types";
 const NAME_MAX_LENGTH = 120;
 
 const toIsoDate = (date: Date) => format(date, "yyyy-MM-dd");
-const SECTION = "text-[11px] font-semibold tracking-wider text-ink-faint uppercase";
+const SECTION = "text-2xs font-semibold tracking-wider text-ink-faint uppercase";
 
 // date-fns не умеет считать рабочие дни по шестидневке (там всегда сб+вс — выходные),
 // поэтому дни недели разбираем сами: для "6/1" выходной только воскресенье.
@@ -139,14 +139,14 @@ export function NewProjectForm({
           Счётчик шагов убран вместе с меню: все три секции показаны на одной
           странице, и «Шаг 1 из 3» противоречил бы тому, что видит пользователь.
         */}
-        <p className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-brand uppercase">
+        <p className="flex items-center gap-2 text-2xs font-semibold tracking-wider text-brand uppercase">
           <span className="size-1.5 rounded-full bg-brand" />
           Мастер инициации
         </p>
         <h1 className="mt-1.5 text-2xl leading-tight font-bold tracking-tight text-ink">
           Создание нового проекта
         </h1>
-        <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-ink-muted">
+        <p className="mt-1.5 max-w-xl text-13 leading-relaxed text-ink-muted">
           Задайте базовые параметры, плановые сроки и структуру задач. Конфигурация
           сформирует календарно-сетевой график и WBS-матрицу.
         </p>
@@ -246,7 +246,7 @@ export function NewProjectForm({
               <>
                 <p className="mt-1 flex items-baseline gap-1.5">
                   <span className="text-2xl font-bold text-brand">{calendarDays}</span>
-                  <span className="text-[13px] text-ink-muted">
+                  <span className="text-13 text-ink-muted">
                     {plural(calendarDays, ["календарный день", "календарных дня", "календарных дней"])}
                   </span>
                 </p>
@@ -263,7 +263,7 @@ export function NewProjectForm({
                 />
               </>
             ) : (
-              <p className="mt-2 text-[13px] text-danger">
+              <p className="mt-2 text-13 text-danger">
                 Дедлайн должен быть позже даты старта
               </p>
             )}
@@ -310,7 +310,7 @@ export function NewProjectForm({
           <div className="flex min-w-0 items-start gap-3">
             <CalendarCheck2 className="mt-0.5 size-5 shrink-0 text-brand" />
             <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-ink">Рабочий календарь проекта</p>
+              <p className="text-13 font-semibold text-ink">Рабочий календарь проекта</p>
             </div>
           </div>
 
@@ -322,7 +322,7 @@ export function NewProjectForm({
                 onClick={() => setCalendar(option)}
                 aria-pressed={calendar === option}
                 className={cn(
-                  "rounded-control px-3 py-2 text-[13px] font-medium transition-colors focus-visible:focus-ring",
+                  "rounded-control px-3 py-2 text-13 font-medium transition-colors focus-visible:focus-ring",
                   calendar === option
                     ? "bg-brand text-white"
                     : "border border-line bg-surface text-ink-muted hover:bg-surface-muted",
@@ -349,7 +349,7 @@ export function NewProjectForm({
         <CardBody className="flex flex-wrap items-center justify-between gap-4">
           <p
             className={cn(
-              "flex items-start gap-2 text-[13px]",
+              "flex items-start gap-2 text-13",
               requiredFilled ? "text-ink-muted" : "text-danger",
             )}
           >
@@ -400,7 +400,7 @@ function ToggleCard({
         className="mt-0.5"
       />
       <span className="min-w-0">
-        <span className="block text-[13px] leading-snug font-semibold text-ink">
+        <span className="block text-13 leading-snug font-semibold text-ink">
           {title}
           {titleAccent ? <span className="ml-1.5 text-danger">●</span> : null}
         </span>

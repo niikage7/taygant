@@ -81,10 +81,10 @@ export function TeamStep({
           </span>
           <span className="flex items-center gap-3 text-right">
             <span>
-              <span className="block text-[11px] font-semibold tracking-wider text-ink-faint uppercase">
+              <span className="block text-2xs font-semibold tracking-wider text-ink-faint uppercase">
                 Назначенная роль
               </span>
-              <span className="text-[13px] font-medium text-ink">
+              <span className="text-13 font-medium text-ink">
                 Руководитель проекта
               </span>
             </span>
@@ -104,7 +104,7 @@ export function TeamStep({
                   <span className="flex min-w-0 items-center gap-2.5">
                     <Avatar fullName={user.fullName} className="size-9 rounded-full text-xs" />
                     <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-semibold text-ink">
+                      <span className="block truncate text-13 font-semibold text-ink">
                         {user.fullName}
                       </span>
                       <span className="block truncate text-xs text-ink-faint">
@@ -127,7 +127,7 @@ export function TeamStep({
                   <div>
                     <label
                       htmlFor={`role-${member.userId}`}
-                      className="block text-[11px] font-semibold tracking-wider text-ink-faint uppercase"
+                      className="block text-2xs font-semibold tracking-wider text-ink-faint uppercase"
                     >
                       Роль в проекте
                     </label>
@@ -156,7 +156,7 @@ export function TeamStep({
                   <div>
                     <label
                       htmlFor={`access-${member.userId}`}
-                      className="block text-[11px] font-semibold tracking-wider text-ink-faint uppercase"
+                      className="block text-2xs font-semibold tracking-wider text-ink-faint uppercase"
                     >
                       Уровень доступа
                     </label>
@@ -187,14 +187,14 @@ export function TeamStep({
           })}
         </ul>
       ) : (
-        <p className="rounded-control bg-surface-subtle px-3 py-4 text-center text-[13px] text-ink-muted">
+        <p className="rounded-control bg-surface-subtle px-3 py-4 text-center text-13 text-ink-muted">
           Пока в проекте только вы. Добавьте участников из списка ниже.
         </p>
       )}
 
       {users.length > 1 ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="flex items-center gap-1.5 text-[13px] font-medium text-brand">
+          <span className="flex items-center gap-1.5 text-13 font-medium text-brand">
             <UserPlus className="size-4" />
             Добавить участника
           </span>

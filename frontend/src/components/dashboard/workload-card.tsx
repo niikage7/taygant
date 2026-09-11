@@ -16,7 +16,7 @@ export function WorkloadCard({ workload }: { workload: MemberWorkload[] }) {
       <CardHeader className="items-start">
         <div>
           <CardTitle>Нагрузка команды</CardTitle>
-          <p className="mt-0.5 text-[13px] text-ink-muted">Текущий спринт</p>
+          <p className="mt-0.5 text-13 text-ink-muted">Текущий спринт</p>
         </div>
         {workload.length > 0 ? (
           <span className="text-xs text-ink-faint">
@@ -38,7 +38,7 @@ export function WorkloadCard({ workload }: { workload: MemberWorkload[] }) {
                 <div className="flex min-w-0 items-center gap-2">
                   <Avatar fullName={item.user.fullName} className="size-8 text-xs" />
                   <div className="min-w-0">
-                    <p className="truncate text-[13px] font-semibold text-ink">
+                    <p className="truncate text-13 font-semibold text-ink">
                       {item.user.fullName}
                     </p>
                     <p className="truncate text-xs text-ink-faint">
@@ -49,7 +49,7 @@ export function WorkloadCard({ workload }: { workload: MemberWorkload[] }) {
                 <div className="shrink-0 text-right">
                   <p
                     className={cn(
-                      "text-[13px] font-bold",
+                      "text-13 font-bold",
                       overloaded ? "text-danger" : "text-success",
                     )}
                   >

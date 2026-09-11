@@ -37,7 +37,7 @@ export default async function TermsPage() {
           </Link>
           <Link
             href="/register"
-            className="rounded-control text-[13px] font-medium text-brand hover:text-brand-hover focus-visible:focus-ring"
+            className="rounded-control text-13 font-medium text-brand hover:text-brand-hover focus-visible:focus-ring"
           >
             К регистрации
           </Link>

@@ -77,9 +77,9 @@ export function TaskComments({ taskId }: { taskId: string }) {
         ) : null}
 
         {comments.isPending ? (
-          <p className="py-6 text-center text-[13px] text-ink-muted">Загружаем комментарии…</p>
+          <p className="py-6 text-center text-13 text-ink-muted">Загружаем комментарии…</p>
         ) : comments.data.length === 0 ? (
-          <p className="py-6 text-center text-[13px] text-ink-muted">
+          <p className="py-6 text-center text-13 text-ink-muted">
             Комментариев пока нет — напишите первый.
           </p>
         ) : (
@@ -88,11 +88,11 @@ export function TaskComments({ taskId }: { taskId: string }) {
               <li key={comment.id} className="flex gap-3">
                 <Avatar
                   fullName={comment.author.fullName}
-                  className="size-8 rounded-full text-[11px]"
+                  className="size-8 rounded-full text-2xs"
                 />
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-[13px] font-semibold text-ink">
+                    <span className="text-13 font-semibold text-ink">
                       {comment.author.fullName}
                     </span>
                     <span className="text-xs text-ink-faint">
@@ -102,7 +102,7 @@ export function TaskComments({ taskId }: { taskId: string }) {
                       })}
                     </span>
                   </p>
-                  <p className="mt-1 text-[13px] leading-relaxed whitespace-pre-wrap text-ink-muted">
+                  <p className="mt-1 text-13 leading-relaxed whitespace-pre-wrap text-ink-muted">
                     {comment.text}
                   </p>
                 </div>

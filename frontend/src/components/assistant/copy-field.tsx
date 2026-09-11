@@ -48,7 +48,7 @@ export function CopyField({
         type="button"
         onClick={copy}
         aria-label={copyLabel}
-        className="absolute top-1.5 right-1.5 inline-flex items-center gap-1 rounded-control bg-surface px-2 py-1 text-[11px] font-medium text-ink-muted shadow-card transition-colors hover:text-ink focus-visible:focus-ring"
+        className="absolute top-1.5 right-1.5 inline-flex items-center gap-1 rounded-control bg-surface px-2 py-1 text-2xs font-medium text-ink-muted shadow-card transition-colors hover:text-ink focus-visible:focus-ring"
       >
         {state === "copied" ? (
           <Check className="size-3.5 text-success" />

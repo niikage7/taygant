@@ -11,7 +11,7 @@ export function Checkbox({ className, ...props }: ComponentProps<typeof Checkbox
     <CheckboxPrimitive.Root
       data-slot="checkbox"
       className={cn(
-        "peer size-4 shrink-0 rounded-[3px] border border-line-strong bg-surface transition-colors",
+        "peer size-4 shrink-0 cursor-pointer rounded-[3px] border border-line-strong bg-surface transition-colors",
         "outline-none focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-60",
         "data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-white",
         className,

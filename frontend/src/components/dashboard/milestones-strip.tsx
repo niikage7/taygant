@@ -42,7 +42,7 @@ export function MilestonesStrip({
       </CardHeader>
       <CardBody>
         {milestones.length === 0 ? (
-          <p className="py-6 text-center text-[13px] text-ink-muted">
+          <p className="py-6 text-center text-13 text-ink-muted">
             Предстоящих контрольных точек нет.
           </p>
         ) : (
@@ -63,7 +63,7 @@ export function MilestonesStrip({
                   </span>
                   <Icon className={cn("size-4 shrink-0", style.icon_)} />
                 </div>
-                <p className="mt-2 text-[13px] font-medium text-ink">{milestone.name}</p>
+                <p className="mt-2 text-13 font-medium text-ink">{milestone.name}</p>
                 <p className="mt-1 text-xs">
                   {milestone.actualDate ? (
                     <span className="text-success">

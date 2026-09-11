@@ -26,7 +26,7 @@ export function CardLabel({ className, ...props }: ComponentProps<"h3">) {
   return (
     <h3
       className={cn(
-        "text-[11px] font-semibold tracking-wider text-ink-faint uppercase",
+        "text-2xs font-semibold tracking-wider text-ink-faint uppercase",
         className,
       )}
       {...props}
@@ -37,7 +37,7 @@ export function CardLabel({ className, ...props }: ComponentProps<"h3">) {
 export function CardTitle({ className, ...props }: ComponentProps<"h3">) {
   return (
     <h3
-      className={cn("flex items-center gap-2 text-[15px] font-semibold text-ink", className)}
+      className={cn("flex items-center gap-2 text-15 font-semibold text-ink", className)}
       {...props}
     />
   );

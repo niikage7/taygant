@@ -52,7 +52,7 @@ export function ShareTaskButton() {
             readOnly
             value={url}
             onFocus={(event) => event.target.select()}
-            className="mt-2 w-full rounded-control bg-surface-muted px-2 py-1 font-mono text-[11px] text-ink outline-none"
+            className="mt-2 w-full rounded-control bg-surface-muted px-2 py-1 font-mono text-2xs text-ink outline-none"
           />
         </span>
       ) : null}

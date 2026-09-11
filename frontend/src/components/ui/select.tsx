@@ -17,6 +17,7 @@ export function Select({ className, children, ...props }: ComponentProps<"select
           "h-9 w-full appearance-none rounded-control bg-surface-muted px-3 pr-8 text-sm text-ink",
           "ring-1 ring-transparent outline-none transition-[box-shadow,background-color]",
           "focus:bg-surface focus:ring-brand",
+          "disabled:cursor-not-allowed disabled:opacity-60",
           className,
         )}
         {...props}
