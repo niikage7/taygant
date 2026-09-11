@@ -5,6 +5,7 @@
  */
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
+import { UserHoverCard } from "@/components/user/user-card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import type { MemberWorkload } from "@/types";
@@ -35,17 +36,19 @@ export function WorkloadCard({ workload }: { workload: MemberWorkload[] }) {
               className="rounded-control bg-surface-subtle p-3"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Avatar fullName={item.user.fullName} className="size-8 text-xs" />
-                  <div className="min-w-0">
-                    <p className="truncate text-13 font-semibold text-ink">
-                      {item.user.fullName}
-                    </p>
-                    <p className="truncate text-xs text-ink-faint">
-                      {item.user.position}
-                    </p>
+                <UserHoverCard user={item.user}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Avatar fullName={item.user.fullName} className="size-8 text-xs" />
+                    <div className="min-w-0">
+                      <p className="truncate text-13 font-semibold text-ink">
+                        {item.user.fullName}
+                      </p>
+                      <p className="truncate text-xs text-ink-faint">
+                        {item.user.position}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </UserHoverCard>
                 <div className="shrink-0 text-right">
                   <p
                     className={cn(

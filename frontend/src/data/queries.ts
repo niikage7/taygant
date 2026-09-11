@@ -39,9 +39,11 @@ import type {
   TaskCreateRequest,
   TaskDependencyCreateRequest,
   TaskDetail,
+  TaskStatus,
   TaskUpdateRequest,
   User,
 } from "@/types";
+import { getStoredUser } from "@/lib/session";
 
 /**
  * Слой доступа к данным экранов.
@@ -66,7 +68,24 @@ export const queryKeys = {
   users: (search: string) => ["users", search] as const,
   task: (taskId: string) => ["tasks", taskId] as const,
   mcpTokens: ["me", "mcp-tokens"] as const,
+  me: ["me", "profile"] as const,
 };
+
+/**
+ * Профиль того, под кем выполнен вход.
+ *
+ * Сохранённый при входе профиль служит начальным значением, чтобы карточка
+ * не мигала скелетом, но сверяется с сервером: имя или должность могли
+ * поменяться с момента входа.
+ */
+export function useMe(): UseQueryResult<User> {
+  return useQuery({
+    queryKey: queryKeys.me,
+    queryFn: () => usersService.getMe(),
+    initialData: () => getStoredUser() ?? undefined,
+    initialDataUpdatedAt: 0,
+  });
+}
 
 export function useProjects(): UseQueryResult<ProjectSummary[]> {
   return useQuery({
@@ -150,6 +169,40 @@ function useTaskInvalidation(taskId: string) {
       queryClient.invalidateQueries({ queryKey: queryKeys.task(taskId) }),
       queryClient.invalidateQueries({ queryKey: ["projects"] }),
     ]);
+}
+
+/**
+ * Смена статуса переносом карточки на канбан-доске.
+ *
+ * Оптимистично: карточка переезжает сразу, а не через запрос и перезагрузку
+ * списка — иначе после отпускания мыши она на полсекунды возвращалась бы на
+ * старое место. При ошибке список откатывается к снимку до переноса.
+ */
+export function useUpdateTaskStatus(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  const key = queryKeys.tasks(projectId ?? "");
+  return useMutation({
+    mutationFn: ({ taskId, status }: { taskId: string; status: TaskStatus }) =>
+      tasksService.update(taskId, { status }),
+    onMutate: async ({ taskId, status }) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Task[]>(key);
+      queryClient.setQueryData<Task[]>(key, (tasks) =>
+        tasks?.map((task) => (task.id === taskId ? { ...task, status } : task)),
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) queryClient.setQueryData(key, context.previous);
+    },
+    // Статус меняет прогресс, отставания и дашборд; сервер к тому же может
+    // вернуть вычисленный статус (overdue/blocked) вместо выставленного.
+    onSettled: (_data, _error, { taskId }) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.task(taskId) }),
+      ]),
+  });
 }
 
 export function useUpdateTask(taskId: string) {

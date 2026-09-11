@@ -1,6 +1,7 @@
 import { ArrowRight, CircleAlert } from "lucide-react";
 import Link from "next/link";
 
+import { UserHoverCard } from "@/components/user/user-card";
 import { Avatar } from "@/components/ui/avatar";
 import { Card, CardBody, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatSigned, plural } from "@/lib/format";
@@ -65,12 +66,14 @@ export function AttentionTasks({ tasks }: { tasks: AttentionTask[] }) {
                     </td>
                     <td className="py-3 pr-3">
                       {task.assignee ? (
-                        <span className="flex items-center gap-1.5">
-                          <Avatar fullName={task.assignee.fullName} className="size-5 text-2xs" />
-                          <span className="text-13 whitespace-nowrap text-ink-muted">
-                            {task.assignee.fullName}
+                        <UserHoverCard user={task.assignee}>
+                          <span className="flex items-center gap-1.5">
+                            <Avatar fullName={task.assignee.fullName} className="size-5 text-2xs" />
+                            <span className="text-13 whitespace-nowrap text-ink-muted">
+                              {task.assignee.fullName}
+                            </span>
                           </span>
-                        </span>
+                        </UserHoverCard>
                       ) : (
                         <span className="text-13 text-ink-faint">—</span>
                       )}

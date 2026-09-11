@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { ROW_HEIGHT } from "@/components/gantt/timeline";
 import { TASK_TABLE_WIDTH } from "@/lib/gantt";
+import { UserHoverCard } from "@/components/user/user-card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { formatDayMonth } from "@/lib/format";
@@ -205,12 +206,14 @@ export function TaskTable({
 
               <span className="flex w-30 shrink-0 items-center gap-1.5">
                 {task.assignee ? (
-                  <>
-                    <Avatar fullName={task.assignee.fullName} className="size-5 text-2xs" />
-                    <span className="truncate text-13 text-ink-muted">
-                      {task.assignee.fullName}
+                  <UserHoverCard user={task.assignee}>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Avatar fullName={task.assignee.fullName} className="size-5 text-2xs" />
+                      <span className="truncate text-13 text-ink-muted">
+                        {task.assignee.fullName}
+                      </span>
                     </span>
-                  </>
+                  </UserHoverCard>
                 ) : null}
               </span>
 

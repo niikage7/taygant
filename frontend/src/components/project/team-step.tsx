@@ -3,6 +3,7 @@
 import { Search, UserPlus, X } from "lucide-react";
 import { useState } from "react";
 
+import { UserHoverCard } from "@/components/user/user-card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -101,17 +102,19 @@ export function TeamStep({
             return (
               <li key={member.userId} className="rounded-control bg-surface-subtle p-3">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    <Avatar fullName={user.fullName} className="size-9 rounded-full text-xs" />
-                    <span className="min-w-0">
-                      <span className="block truncate text-13 font-semibold text-ink">
-                        {user.fullName}
-                      </span>
-                      <span className="block truncate text-xs text-ink-faint">
-                        {user.position || user.email}
+                  <UserHoverCard user={user}>
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <Avatar fullName={user.fullName} className="size-9 rounded-full text-xs" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-13 font-semibold text-ink">
+                          {user.fullName}
+                        </span>
+                        <span className="block truncate text-xs text-ink-faint">
+                          {user.position || user.email}
+                        </span>
                       </span>
                     </span>
-                  </span>
+                  </UserHoverCard>
                   <button
                     type="button"
                     onClick={() =>

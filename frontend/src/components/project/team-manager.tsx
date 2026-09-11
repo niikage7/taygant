@@ -4,6 +4,7 @@ import { ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import { UserHoverCard } from "@/components/user/user-card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -259,6 +260,7 @@ function MemberRow({
   const updateMember = useUpdateMember(projectId);
   const removeMember = useRemoveMember(projectId);
   const busy = updateMember.isPending || removeMember.isPending;
+  const roleLabel = ROLE_OPTIONS.find((option) => option.value === member.projectRole)?.label;
 
   const changeRole = (projectRole: ProjectRole) =>
     updateMember.mutate({ memberId: member.id, payload: { projectRole } });
@@ -267,13 +269,19 @@ function MemberRow({
 
   return (
     <li className="flex flex-wrap items-center gap-3 rounded-control bg-surface-subtle p-3">
-      <Avatar fullName={member.user.fullName} className="size-9 shrink-0 rounded-full text-xs" />
+      <UserHoverCard user={member.user} note={roleLabel}>
+        <span className="shrink-0">
+          <Avatar fullName={member.user.fullName} className="size-9 rounded-full text-xs" />
+        </span>
+      </UserHoverCard>
 
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-2">
-          <span className="truncate text-13 font-semibold text-ink">
-            {member.user.fullName}
-          </span>
+          <UserHoverCard user={member.user} note={roleLabel}>
+            <span className="truncate text-13 font-semibold text-ink">
+              {member.user.fullName}
+            </span>
+          </UserHoverCard>
           {isSelf ? (
             <Badge tone="brand" size="sm">
               Вы
