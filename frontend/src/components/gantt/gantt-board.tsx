@@ -1,7 +1,7 @@
 "use client";
 
 import { addDays, format, parseISO } from "date-fns";
-import { CircleAlert, Plus, TriangleAlert, User, Waypoints, X } from "lucide-react";
+import { CalendarClock, CircleAlert, Plus, TriangleAlert, Undo2, User, Waypoints, X } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { CreateTaskDialog } from "@/components/gantt/create-task-dialog";
@@ -23,6 +23,20 @@ const SCALES = [
 ] as const satisfies readonly { value: TimeScale; label: string }[];
 
 type Filter = "mine" | "critical" | "risks";
+
+/** Последнее перетаскивание задачи: данных хватает, чтобы его отменить. */
+type PendingMove = {
+  task: Task;
+  /** Сдвиг в днях, применённый при переносе. Откат — это сдвиг на -deltaDays. */
+  deltaDays: number;
+  /** Даты задачи до переноса — для отката одиночного PATCH-переноса. */
+  originalStartDate: string;
+  originalEndDate: string;
+  /** Признак каскадного переноса: откат идёт тем же путём, что и перенос. */
+  cascade: boolean;
+  /** Каскадная сводка; null для одиночного переноса без пересчёта цепочки. */
+  result: ShiftSimulation | null;
+};
 
 /**
  * Интерактивная часть экрана Ганта: масштаб, фильтры и синхронная пара
@@ -62,9 +76,10 @@ export function GanttBoard({
 
   const access = useProjectAccess();
   const moveTask = useMoveTask();
-  // Итог последнего каскадного переноса: сдвиг чужих задач нельзя проводить
-  // молча — пользователь должен видеть, что тронул не только свою полосу.
-  const [shift, setShift] = useState<{ task: Task; result: ShiftSimulation } | null>(null);
+  // Итог последнего переноса: показываем, что изменилось, и даём отменить
+  // случайное перетаскивание. Только последнее — новое перетаскивание затирает
+  // предыдущее, чтобы «Отмена» не откатывала давно ушедший план.
+  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
 
   const toggleFilter = (filter: Filter) =>
     setFilters((current) =>
@@ -83,20 +98,46 @@ export function GanttBoard({
     const endDate = task.isMilestone
       ? startDate
       : format(addDays(parseISO(task.endDate), deltaDays), "yyyy-MM-dd");
-    setShift(null);
+    const cascade = access.isFull;
+    setPendingMove(null);
     moveTask.mutate(
       {
         taskId: task.id,
         shiftDays: deltaDays,
         startDate,
         endDate,
-        cascade: access.isFull,
+        cascade,
       },
       {
         onSuccess: (result) => {
-          if (result && "affectedTasks" in result) setShift({ task, result });
+          setPendingMove({
+            task,
+            deltaDays,
+            originalStartDate: task.startDate,
+            originalEndDate: task.endDate,
+            cascade,
+            result: result && "affectedTasks" in result ? result : null,
+          });
         },
       },
+    );
+  };
+
+  // Откат последнего переноса. Каскад отменяем обратным apply-shift (сервер сам
+  // вернёт цепочку), одиночный PATCH — возвратом исходных дат. Оба пути идут
+  // через тот же мутейт, поэтому прогресс и обработка ошибок общие.
+  const handleUndoMove = () => {
+    if (!pendingMove) return;
+    const { task, deltaDays, originalStartDate, originalEndDate, cascade } = pendingMove;
+    moveTask.mutate(
+      {
+        taskId: task.id,
+        shiftDays: -deltaDays,
+        startDate: originalStartDate,
+        endDate: originalEndDate,
+        cascade,
+      },
+      { onSuccess: () => setPendingMove(null) },
     );
   };
 
@@ -191,8 +232,13 @@ export function GanttBoard({
         </div>
       ) : null}
 
-      {shift ? (
-        <ShiftSummary task={shift.task} result={shift.result} onClose={() => setShift(null)} />
+      {pendingMove ? (
+        <ShiftSummary
+          move={pendingMove}
+          isUndoing={moveTask.isPending}
+          onUndo={handleUndoMove}
+          onClose={() => setPendingMove(null)}
+        />
       ) : null}
 
       <div className="overflow-hidden rounded-card bg-surface shadow-card" data-tour="gantt">
@@ -293,21 +339,25 @@ function FilterChip({
 }
 
 /**
- * Что именно сделал каскадный перенос: сколько задач сдвинулось следом и как
- * это сказалось на дедлайне проекта. Без этого apply-shift меняет чужие сроки
- * незаметно для того, кто просто подвинул полосу мышью.
+ * Что именно сделал перенос и как его отменить. Для каскада показываем, сколько
+ * задач сдвинулось следом и как это сказалось на дедлайне проекта: без этого
+ * apply-shift меняет чужие сроки незаметно для того, кто подвинул полосу мышью.
+ * Для одиночного PATCH-переноса хватает факта сдвига и кнопки отмены.
  */
 function ShiftSummary({
-  task,
-  result,
+  move,
+  isUndoing,
+  onUndo,
   onClose,
 }: {
-  task: Task;
-  result: ShiftSimulation;
+  move: PendingMove;
+  isUndoing: boolean;
+  onUndo: () => void;
   onClose: () => void;
 }) {
-  const affected = result.affectedTasks.length;
-  const deadlineDelta = result.projectDeadlineImpact.deltaDays;
+  const { task, result, deltaDays } = move;
+  const affected = result?.affectedTasks.length ?? 0;
+  const deadlineDelta = result?.projectDeadlineImpact.deltaDays ?? 0;
   const tone = deadlineDelta > 0 ? "danger" : "brand";
 
   return (
@@ -319,19 +369,37 @@ function ShiftSummary({
     >
       {tone === "danger" ? (
         <TriangleAlert className="size-4 shrink-0" />
-      ) : (
+      ) : result ? (
         <Waypoints className="size-4 shrink-0" />
+      ) : (
+        <CalendarClock className="size-4 shrink-0" />
       )}
       <p className="min-w-0 flex-1">
         <span className="font-semibold">«{task.title}»</span> перенесена на{" "}
-        {result.shiftDays > 0 ? `+${result.shiftDays}` : result.shiftDays} дн.
-        {affected > 0
-          ? ` Каскадно сдвинуто зависимых задач: ${affected}.`
-          : " Зависимые задачи не затронуты."}
-        {deadlineDelta !== 0
-          ? ` Дедлайн проекта сместился на ${deadlineDelta > 0 ? "+" : ""}${deadlineDelta} дн.`
-          : ` Дедлайн проекта не изменился (резерв: ${result.bufferAvailableDays} дн.).`}
+        {deltaDays > 0 ? `+${deltaDays}` : deltaDays} дн.
+        {result ? (
+          <>
+            {affected > 0
+              ? ` Каскадно сдвинуто зависимых задач: ${affected}.`
+              : " Зависимые задачи не затронуты."}
+            {deadlineDelta !== 0
+              ? ` Дедлайн проекта сместился на ${deadlineDelta > 0 ? "+" : ""}${deadlineDelta} дн.`
+              : ` Дедлайн проекта не изменился (резерв: ${result.bufferAvailableDays} дн.).`}
+          </>
+        ) : null}
       </p>
+      <button
+        type="button"
+        onClick={onUndo}
+        disabled={isUndoing}
+        className={cn(
+          "flex shrink-0 items-center gap-1.5 rounded-control px-2.5 py-1 text-13 font-semibold text-white transition-colors focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-60",
+          tone === "danger" ? "bg-danger hover:bg-danger-soft" : "bg-brand hover:bg-brand-hover",
+        )}
+      >
+        <Undo2 className="size-3.5" />
+        {isUndoing ? "Отменяем…" : "Отмена"}
+      </button>
       <button
         type="button"
         onClick={onClose}
