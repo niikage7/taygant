@@ -12,6 +12,7 @@ import {
   GitBranch,
   LineChart,
   LoaderCircle,
+  SquareKanban,
   Users,
   X,
 } from "lucide-react";
@@ -46,6 +47,7 @@ const EXPORT_FORMATS: { format: ExportFormat; label: string }[] = [
 function navItems(detailsHref: string | null): (NavItem & { disabled?: boolean })[] {
   return [
     { href: "/gantt", label: "Диаграмма Ганта", icon: BarChart3 },
+    { href: "/board", label: "Канбан-доска", icon: SquareKanban },
     { href: "/overview", label: "Обзор и Аналитика", icon: LineChart },
     {
       href: detailsHref ?? "/gantt",

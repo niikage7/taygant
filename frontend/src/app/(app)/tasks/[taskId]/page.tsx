@@ -122,7 +122,7 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
               </h1>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <ShareTaskButton />
               {canEdit ? (
                 <ConfirmDialog
@@ -193,12 +193,13 @@ export default function TaskDetailPage({ params }: PageProps<"/tasks/[taskId]">)
         </CardBody>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
         {project.data ? (
           <TaskParams
             task={detail}
             project={project.data}
             plannedProgressPercent={Math.max(detail.progressPercent - 5, 0)}
+            projectTasks={projectTasks.data ?? []}
             onDraftChange={handleDraftChange}
           />
         ) : (

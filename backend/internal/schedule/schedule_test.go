@@ -217,6 +217,39 @@ func TestShiftWithCalendarLandsOnNextWorkday(t *testing.T) {
 	}
 }
 
+// Сдвиг сохраняет длительность в рабочих днях: задача, пересекающая выходные,
+// не должна после переноса заканчиваться в субботу, а её последователь — ждать
+// понедельника и удлиняться.
+func TestShiftKeepsWorkdayDuration(t *testing.T) {
+	a, b := newID(t), newID(t)
+	tasks := []Task{
+		{ID: a, Start: d(2026, 1, 8), End: d(2026, 1, 13)},  // чт-вт: 3 рабочих дня после старта
+		{ID: b, Start: d(2026, 1, 14), End: d(2026, 1, 15)}, // ср-чт: 1 рабочий день после старта
+	}
+	deps := []Dependency{{PredecessorID: a, SuccessorID: b, Type: models.DependencyFS}}
+	g, err := NewGraph(tasks, deps)
+	if err != nil {
+		t.Fatalf("NewGraph: %v", err)
+	}
+	g.WithCalendar(models.Calendar52)
+
+	result, err := g.Shift(a, d(2026, 1, 12)) // на понедельник
+	if err != nil {
+		t.Fatalf("Shift: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("ожидались обе задачи в результате, получено %d: %+v", len(result), result)
+	}
+	// Пн + 3 рабочих дня = чт 2026-01-15, а не календарные +5 = суббота.
+	if !result[0].NewEnd.Equal(d(2026, 1, 15)) {
+		t.Fatalf("A.NewEnd = %s, ожидалось 2026-01-15", result[0].NewEnd)
+	}
+	// B стартует в пятницу и заканчивается через рабочий день — в понедельник.
+	if !result[1].NewStart.Equal(d(2026, 1, 16)) || !result[1].NewEnd.Equal(d(2026, 1, 19)) {
+		t.Fatalf("B = %s–%s, ожидалось 2026-01-16–2026-01-19", result[1].NewStart, result[1].NewEnd)
+	}
+}
+
 // Цикл в графе — ошибка, а не штатный сценарий (сервис связей его не
 // допускает), но движок обязан её ловить, а не зависать или молча всё пропустить.
 func TestNewGraphDetectsCycle(t *testing.T) {

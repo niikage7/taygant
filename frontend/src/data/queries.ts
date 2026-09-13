@@ -18,6 +18,7 @@ import {
   workloadService,
 } from "@/services";
 import type {
+  AssignableTaskStatus,
   Comment,
   GanttChart,
   GanttScale,
@@ -42,6 +43,7 @@ import type {
   TaskUpdateRequest,
   User,
 } from "@/types";
+import { getStoredUser } from "@/lib/session";
 
 /**
  * Слой доступа к данным экранов.
@@ -66,7 +68,24 @@ export const queryKeys = {
   users: (search: string) => ["users", search] as const,
   task: (taskId: string) => ["tasks", taskId] as const,
   mcpTokens: ["me", "mcp-tokens"] as const,
+  me: ["me", "profile"] as const,
 };
+
+/**
+ * Профиль того, под кем выполнен вход.
+ *
+ * Сохранённый при входе профиль служит начальным значением, чтобы карточка
+ * не мигала скелетом, но сверяется с сервером: имя или должность могли
+ * поменяться с момента входа.
+ */
+export function useMe(): UseQueryResult<User> {
+  return useQuery({
+    queryKey: queryKeys.me,
+    queryFn: () => usersService.getMe(),
+    initialData: () => getStoredUser() ?? undefined,
+    initialDataUpdatedAt: 0,
+  });
+}
 
 export function useProjects(): UseQueryResult<ProjectSummary[]> {
   return useQuery({
@@ -83,11 +102,26 @@ export function useProject(projectId: string | undefined): UseQueryResult<Projec
   });
 }
 
-export function useTasks(projectId: string | undefined): UseQueryResult<Task[]> {
+/**
+ * Задачи проекта — общий кэш для оболочки, поиска, Ганта и канбан-доски.
+ *
+ * `live` включает регулярное обновление и перезапрос при возврате в вкладку.
+ * Нужно доске: это единственный экран, где над одними и теми же карточками
+ * одновременно работают несколько человек, и перенос, сделанный соседом, иначе
+ * не появился бы до перезагрузки страницы — а перетаскивание устаревшей
+ * карточки молча перетёрло бы чужой перенос. Ключ у запроса общий, поэтому
+ * опция действует, только пока доска открыта.
+ */
+export function useTasks(
+  projectId: string | undefined,
+  options?: { live?: boolean },
+): UseQueryResult<Task[]> {
   return useQuery({
     queryKey: queryKeys.tasks(projectId ?? ""),
     queryFn: () => tasksService.list(projectId as string),
     enabled: Boolean(projectId),
+    refetchInterval: options?.live ? 15_000 : false,
+    refetchOnWindowFocus: options?.live ?? false,
   });
 }
 
@@ -150,6 +184,46 @@ function useTaskInvalidation(taskId: string) {
       queryClient.invalidateQueries({ queryKey: queryKeys.task(taskId) }),
       queryClient.invalidateQueries({ queryKey: ["projects"] }),
     ]);
+}
+
+/**
+ * Смена статуса переносом карточки на канбан-доске.
+ *
+ * Оптимистично: карточка переезжает сразу, а не через запрос и перезагрузку
+ * списка — иначе после отпускания мыши она на полсекунды возвращалась бы на
+ * старое место. При ошибке список откатывается к снимку до переноса.
+ */
+export function useUpdateTaskStatus(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  const key = queryKeys.tasks(projectId ?? "");
+  return useMutation({
+    mutationFn: ({ taskId, status }: { taskId: string; status: AssignableTaskStatus }) =>
+      tasksService.update(taskId, { status }),
+    // Меняем и baseStatus: именно по нему канбан-доска раскладывает карточки,
+    // а status сервер всё равно может вернуть вычисленным (overdue/blocked).
+    // Откат в onError возвращает оба поля, поэтому неудавшийся перенос не
+    // оставляет карточку в чужой колонке.
+    onMutate: async ({ taskId, status }) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Task[]>(key);
+      queryClient.setQueryData<Task[]>(key, (tasks) =>
+        tasks?.map((task) =>
+          task.id === taskId ? { ...task, status, baseStatus: status } : task,
+        ),
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) queryClient.setQueryData(key, context.previous);
+    },
+    // Статус меняет прогресс, отставания и дашборд; сервер к тому же может
+    // вернуть вычисленный статус (overdue/blocked) вместо выставленного.
+    onSettled: (_data, _error, { taskId }) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.task(taskId) }),
+      ]),
+  });
 }
 
 export function useUpdateTask(taskId: string) {
@@ -231,6 +305,26 @@ export function useMoveTask() {
     // Сдвиг цепочки меняет даты чужих задач, критический путь и метрики обзора,
     // поэтому обновляем все данные проекта, а не одну задачу.
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
+/**
+ * Возврат задачам их прежних дат — отмена переноса полосы вместе с каскадом.
+ *
+ * Обратный apply-shift для этого не годится: CPM толкает последователей только
+ * вперёд, и при сдвиге назад они остались бы на новых датах.
+ */
+export function useRestoreTaskDates() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dates: { taskId: string; startDate: string; endDate: string }[]) =>
+      Promise.all(
+        dates.map(({ taskId, startDate, endDate }) =>
+          tasksService.update(taskId, { startDate, endDate }),
+        ),
+      ),
+    // Перечитываем и после ошибки: часть задач могла уже вернуться на место.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });
 }
 

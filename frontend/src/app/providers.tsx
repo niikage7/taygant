@@ -1,5 +1,6 @@
 "use client";
 
+import * as Tooltip from "@radix-ui/react-tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 
@@ -29,5 +30,12 @@ export function Providers({ children }: { children: ReactNode }) {
       }),
   );
 
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  // Tooltip.Provider на всё приложение: всплывающие карточки пользователей
+  // стоят в таблицах, комментариях и на доске, и заводить провайдер в каждом
+  // из этих мест значило бы размножить одинаковую настройку задержки.
+  return (
+    <QueryClientProvider client={client}>
+      <Tooltip.Provider delayDuration={300}>{children}</Tooltip.Provider>
+    </QueryClientProvider>
+  );
 }

@@ -1,19 +1,35 @@
 "use client";
 
-import { addDays, format, parseISO } from "date-fns";
-import { CalendarClock, CircleAlert, Plus, TriangleAlert, Undo2, User, Waypoints, X } from "lucide-react";
+import { addDays, differenceInCalendarDays, format, parseISO } from "date-fns";
+import {
+  CalendarClock,
+  CircleAlert,
+  FilterX,
+  Plus,
+  TriangleAlert,
+  Undo2,
+  User,
+  Waypoints,
+  X,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
+import { EmptyState } from "@/components/app/page-state";
 import { CreateTaskDialog } from "@/components/gantt/create-task-dialog";
 import { buildGanttRows } from "@/lib/gantt-rows";
 import { TaskTable } from "@/components/gantt/task-table";
 import { Timeline } from "@/components/gantt/timeline";
+import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { useProjectAccess } from "@/data/project-access";
-import { useMoveTask } from "@/data/queries";
+import { useMoveTask, useRestoreTaskDates } from "@/data/queries";
 import { toUserMessage } from "@/lib/api-error-message";
+import { describeConflict, findDependencyConflicts } from "@/lib/dependency-conflicts";
 import { cn } from "@/lib/utils";
-import { TASK_TABLE_WIDTH, type TimeScale } from "@/lib/gantt";
+import { TASK_TABLE_COMPACT_WIDTH, TASK_TABLE_WIDTH, type TimeScale } from "@/lib/gantt";
+import { useMediaQuery } from "@/lib/use-media-query";
+import { addWorkdays, nearestWorkday, workdaysAfter } from "@/lib/working-calendar";
 import type { Milestone, Project, ShiftSimulation, Task, TaskDependency } from "@/types";
 
 const SCALES = [
@@ -27,15 +43,27 @@ type Filter = "mine" | "critical" | "risks";
 /** Последнее перетаскивание задачи: данных хватает, чтобы его отменить. */
 type PendingMove = {
   task: Task;
-  /** Сдвиг в днях, применённый при переносе. Откат — это сдвиг на -deltaDays. */
+  /** Сдвиг в днях, применённый при переносе. */
   deltaDays: number;
-  /** Даты задачи до переноса — для отката одиночного PATCH-переноса. */
-  originalStartDate: string;
-  originalEndDate: string;
-  /** Признак каскадного переноса: откат идёт тем же путём, что и перенос. */
-  cascade: boolean;
+  /**
+   * Прежние даты всех задач, которые сдвинул перенос: сама задача и, при
+   * каскаде, её последователи. Отмена возвращает каждой её даты.
+   */
+  restore: { taskId: string; startDate: string; endDate: string }[];
   /** Каскадная сводка; null для одиночного переноса без пересчёта цепочки. */
   result: ShiftSimulation | null;
+};
+
+/** Перенос, готовый к отправке: даты уже посчитаны по рабочему календарю. */
+type PlannedMove = {
+  task: Task;
+  deltaDays: number;
+  startDate: string;
+  endDate: string;
+  /** apply-shift с пересчётом цепочки (полный доступ) или PATCH одной задачи. */
+  cascade: boolean;
+  /** Какие связи нарушит перенос — пока список не пуст, ждём подтверждения. */
+  warnings: string[];
 };
 
 /**
@@ -58,6 +86,7 @@ export function GanttBoard({
   currentUserId?: string;
   today: string;
 }) {
+  const router = useRouter();
   const [scale, setScale] = useState<TimeScale>("weeks");
   const [filters, setFilters] = useState<Filter[]>([]);
   const [alertVisible, setAlertVisible] = useState(true);
@@ -65,6 +94,10 @@ export function GanttBoard({
   // Прокрутка — общая для реестра и таймлайна: это один контейнер, скроллящийся
   // в обе стороны. Ссылка нужна таймлайну, чтобы подкрутить график к сегодня.
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Уже md реестр сжимается до номера и названия — иначе на телефоне он
+  // закрывает таймлайн. Ширина нужна и таблице, и расчёту прокрутки, поэтому
+  // решается в JS, а не классами.
+  const compact = useMediaQuery("(max-width: 767px)");
 
   const toggleCollapse = (milestoneId: string) =>
     setCollapsed((current) => {
@@ -76,30 +109,25 @@ export function GanttBoard({
 
   const access = useProjectAccess();
   const moveTask = useMoveTask();
+  const restoreDates = useRestoreTaskDates();
   // Итог последнего переноса: показываем, что изменилось, и даём отменить
   // случайное перетаскивание. Только последнее — новое перетаскивание затирает
   // предыдущее, чтобы «Отмена» не откатывала давно ушедший план.
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  // Перенос, который нарушит связи задачи: без явного согласия не отправляем.
+  const [pendingConfirm, setPendingConfirm] = useState<PlannedMove | null>(null);
 
   const toggleFilter = (filter: Filter) =>
     setFilters((current) =>
       current.includes(filter) ? current.filter((item) => item !== filter) : [...current, filter],
     );
 
-  // Перенос задачи целиком сдвигает сроки на delta дней, сохраняя длительность.
-  // Веха нулевой длительности — точка, поэтому её начало и конец совпадают.
-  //
   // При полном доступе перенос идёт через apply-shift: сервер пересчитывает по
-  // CPM всю цепочку последователей. Обычный PATCH дат сдвинул бы одну задачу и
-  // оставил её последователя начинаться раньше её конца — молча сломанный план.
-  const handleTaskMove = (task: Task, deltaDays: number) => {
-    if (deltaDays === 0) return;
-    const startDate = format(addDays(parseISO(task.startDate), deltaDays), "yyyy-MM-dd");
-    const endDate = task.isMilestone
-      ? startDate
-      : format(addDays(parseISO(task.endDate), deltaDays), "yyyy-MM-dd");
-    const cascade = access.isFull;
-    setPendingMove(null);
+  // CPM всю цепочку последователей. Участнику уровня edit остаётся PATCH дат
+  // одной задачи — последователей он не двигает, поэтому связи проверяются
+  // заранее (см. handleTaskMove).
+  const commitMove = ({ task, deltaDays, startDate, endDate, cascade }: PlannedMove) => {
+    setPendingConfirm(null);
     moveTask.mutate(
       {
         taskId: task.id,
@@ -109,37 +137,75 @@ export function GanttBoard({
         cascade,
       },
       {
-        onSuccess: (result) => {
+        onSuccess: (response) => {
+          const result = response && "affectedTasks" in response ? response : null;
           setPendingMove({
             task,
             deltaDays,
-            originalStartDate: task.startDate,
-            originalEndDate: task.endDate,
-            cascade,
-            result: result && "affectedTasks" in result ? result : null,
+            // Каскад сообщает прежние даты каждой сдвинутой задачи, включая саму
+            // перенесённую; одиночный PATCH трогает только её.
+            restore: result
+              ? result.affectedTasks.map((affected) => ({
+                  taskId: affected.taskId,
+                  startDate: affected.originalStartDate,
+                  endDate: affected.originalEndDate,
+                }))
+              : [{ taskId: task.id, startDate: task.startDate, endDate: task.endDate }],
+            result,
           });
         },
       },
     );
   };
 
-  // Откат последнего переноса. Каскад отменяем обратным apply-shift (сервер сам
-  // вернёт цепочку), одиночный PATCH — возвратом исходных дат. Оба пути идут
-  // через тот же мутейт, поэтому прогресс и обработка ошибок общие.
+  const calendar = project.workingCalendarType;
+  const wbsOf = new Map(tasks.map((task) => [task.id, task.wbsNumber]));
+
+  // Перенос задачи целиком. Начало примагничиваем к ближайшему рабочему дню, а
+  // длительность держим в рабочих днях, как каскад на сервере: иначе задача
+  // встаёт на выходной, и последователи ждут понедельника. Веха нулевой
+  // длительности — точка, её начало и конец совпадают.
+  const handleTaskMove = (task: Task, dragDays: number) => {
+    const draggedStart = format(addDays(parseISO(task.startDate), dragDays), "yyyy-MM-dd");
+    const startDate = nearestWorkday(calendar, draggedStart, dragDays > 0 ? 1 : -1);
+    const deltaDays = differenceInCalendarDays(parseISO(startDate), parseISO(task.startDate));
+    if (deltaDays === 0) return;
+    const endDate = task.isMilestone
+      ? startDate
+      : addWorkdays(calendar, startDate, workdaysAfter(calendar, task.startDate, task.endDate));
+    // Каскад требует и полного доступа, и включённого в настройках проекта
+    // автопересчёта — галочка «Включить автоматический пересчёт зависимых
+    // задач» из мастера проекта иначе ни на что не влияла бы.
+    const cascade = access.isFull && project.autoRecalculateDependents;
+
+    // Каскад сам отодвинет последователей, поэтому при нём сломать можно только
+    // связь с предшественниками; PATCH не двигает никого — проверяем обе стороны.
+    const warnings = findDependencyConflicts({
+      taskId: task.id,
+      startDate,
+      endDate,
+      dependencies,
+      tasks,
+      calendar,
+      checkSuccessors: !cascade,
+    }).map((conflict) => describeConflict(conflict, (id) => wbsOf.get(id)));
+
+    const move = { task, deltaDays, startDate, endDate, cascade, warnings };
+    setPendingMove(null);
+    restoreDates.reset();
+    if (warnings.length > 0) setPendingConfirm(move);
+    else commitMove(move);
+  };
+
+  // Откат последнего переноса: каждой сдвинутой задаче возвращаем её прежние
+  // даты. Обратный apply-shift не подходит — последователей назад он не тянет,
+  // и после «Отмены» цепочка осталась бы сдвинутой.
   const handleUndoMove = () => {
     if (!pendingMove) return;
-    const { task, deltaDays, originalStartDate, originalEndDate, cascade } = pendingMove;
-    moveTask.mutate(
-      {
-        taskId: task.id,
-        shiftDays: -deltaDays,
-        startDate: originalStartDate,
-        endDate: originalEndDate,
-        cascade,
-      },
-      { onSuccess: () => setPendingMove(null) },
-    );
+    restoreDates.mutate(pendingMove.restore, { onSuccess: () => setPendingMove(null) });
   };
+
+  const hasActiveFilters = filters.length > 0;
 
   const visibleTasks = tasks.filter((task) => {
     if (filters.includes("mine") && task.assignee?.id !== currentUserId) return false;
@@ -150,7 +216,15 @@ export function GanttBoard({
 
   // Порядок строк считаем один раз: реестр и таймлайн обязаны совпадать
   // построчно, иначе отрезки уедут относительно названий.
-  const rows = buildGanttRows(visibleTasks, milestones, collapsed);
+  const allRows = buildGanttRows(visibleTasks, milestones, collapsed);
+  // Без фильтров пустая веха — честное отображение реального состояния
+  // проекта (в неё правда ещё ничего не привязали). При активном фильтре
+  // пустая группа — просто всё, что под ней было, отфильтровано, и держать
+  // такой заголовок на экране незачем.
+  const rows = hasActiveFilters
+    ? allRows.filter((row) => row.kind !== "milestone" || row.childCount > 0)
+    : allRows;
+  const filteredToEmpty = hasActiveFilters && visibleTasks.length === 0;
 
   const criticalTask = tasks.find(
     (task) => task.isCriticalPath && task.planVsActualDeviationDays < 0,
@@ -200,6 +274,7 @@ export function GanttBoard({
           </p>
           <button
             type="button"
+            onClick={() => router.push(`/tasks/${criticalTask.id}`)}
             className="shrink-0 rounded-control text-13 font-semibold text-brand hover:text-brand-hover focus-visible:focus-ring"
           >
             Оптимизировать связи
@@ -215,15 +290,20 @@ export function GanttBoard({
         </div>
       ) : null}
 
-      {moveTask.error ? (
+      {moveTask.error || restoreDates.error ? (
         <div className="flex items-center gap-3 rounded-control bg-danger-tint px-3 py-2.5 text-[13px] text-danger">
           <TriangleAlert className="size-4 shrink-0" />
           <p className="min-w-0 flex-1">
-            {toUserMessage(moveTask.error, {}, "Не удалось перенести задачу")}
+            {moveTask.error
+              ? toUserMessage(moveTask.error, {}, "Не удалось перенести задачу")
+              : toUserMessage(restoreDates.error, {}, "Не удалось отменить перенос")}
           </p>
           <button
             type="button"
-            onClick={() => moveTask.reset()}
+            onClick={() => {
+              moveTask.reset();
+              restoreDates.reset();
+            }}
             aria-label="Скрыть сообщение"
             className="shrink-0 rounded-control text-ink-faint hover:text-ink focus-visible:focus-ring"
           >
@@ -232,58 +312,103 @@ export function GanttBoard({
         </div>
       ) : null}
 
-      {pendingMove ? (
-        <ShiftSummary
-          move={pendingMove}
-          isUndoing={moveTask.isPending}
-          onUndo={handleUndoMove}
-          onClose={() => setPendingMove(null)}
-        />
+      {pendingConfirm ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-control bg-warning-tint px-3 py-2.5 text-13 text-warning-ink"
+        >
+          <TriangleAlert className="size-4 shrink-0 text-warning" />
+          <p className="min-w-0 flex-1">
+            <span className="font-semibold">«{pendingConfirm.task.title}»:</span>{" "}
+            {pendingConfirm.warnings.join("; ")}. Всё равно перенести?
+          </p>
+          <span className="flex shrink-0 items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setPendingConfirm(null)}>
+              Не переносить
+            </Button>
+            <Button size="sm" onClick={() => commitMove(pendingConfirm)}>
+              Перенести
+            </Button>
+          </span>
+        </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-card bg-surface shadow-card" data-tour="gantt">
-        <div
-          ref={scrollRef}
-          className="flex max-h-[calc(100dvh-20rem)] min-h-[18rem] overflow-auto"
-        >
-          <TaskTable
-            rows={rows}
-            allTasks={tasks}
-            dependencies={dependencies}
-            collapsed={collapsed}
-            onToggleCollapse={toggleCollapse}
-            highlightCriticalPath={project.highlightCriticalPath}
-          />
-          <Timeline
-            rows={rows}
-            dependencies={dependencies}
-            milestones={milestones}
-            scale={scale}
-            startDate={project.startDate}
-            endDate={project.deadline}
-            today={today}
-            highlightCriticalPath={project.highlightCriticalPath}
-            canMoveTask={access.canEditTask}
-            onTaskMove={handleTaskMove}
-            scrollRef={scrollRef}
-            frozenWidth={TASK_TABLE_WIDTH}
+      {pendingMove ? (
+        // Toast поверх диаграммы, вне потока документа: в потоке сводка сдвигала
+        // бы график вниз при появлении, и только что отпущенная полоса уезжала
+        // бы из-под курсора.
+        <div className="fixed bottom-4 left-1/2 z-50 w-[min(640px,calc(100vw-2rem))] -translate-x-1/2">
+          <ShiftSummary
+            move={pendingMove}
+            isUndoing={restoreDates.isPending}
+            onUndo={handleUndoMove}
+            onClose={() => setPendingMove(null)}
           />
         </div>
-        {access.isFull ? (
-          <CreateTaskDialog
-            projectId={project.id}
-            trigger={
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-13 text-ink-faint transition-colors hover:bg-surface-subtle hover:text-ink-muted focus-visible:focus-ring"
-              >
-                <Plus className="size-4" />
-                Добавить задачу или веху…
-              </button>
-            }
-          />
-        ) : null}{" "}
-      </div>
+      ) : null}
+
+      {filteredToEmpty ? (
+        <EmptyState
+          icon={FilterX}
+          title="Нет задач по выбранным фильтрам"
+          description="Попробуйте отключить один из фильтров или сбросить их все."
+          action={
+            <Button variant="secondary" onClick={() => setFilters([])}>
+              Сбросить фильтры
+            </Button>
+          }
+        />
+      ) : (
+        <div className="overflow-hidden rounded-card bg-surface shadow-card" data-tour="gantt">
+          {/* items-start обязателен: по умолчанию однострочный flex растягивает
+              реестр и таймлайн только до max-h контейнера, а не до высоты всех
+              строк. Ниже видимой области у реестра кончался фон, и при прокрутке
+              вниз сквозь него проступала сетка таймлайна, а шапки переставали
+              примораживаться. */}
+          <div
+            ref={scrollRef}
+            className="flex max-h-[calc(100dvh-20rem)] min-h-[18rem] items-start overflow-auto"
+          >
+            <TaskTable
+              rows={rows}
+              allTasks={tasks}
+              dependencies={dependencies}
+              collapsed={collapsed}
+              onToggleCollapse={toggleCollapse}
+              highlightCriticalPath={project.highlightCriticalPath}
+              compact={compact}
+            />
+            <Timeline
+              rows={rows}
+              dependencies={dependencies}
+              milestones={milestones}
+              scale={scale}
+              startDate={project.startDate}
+              endDate={project.deadline}
+              today={today}
+              highlightCriticalPath={project.highlightCriticalPath}
+              canMoveTask={access.canEditTask}
+              onTaskMove={handleTaskMove}
+              scrollRef={scrollRef}
+              frozenWidth={compact ? TASK_TABLE_COMPACT_WIDTH : TASK_TABLE_WIDTH}
+            />
+          </div>
+          {access.isFull ? (
+            <CreateTaskDialog
+              projectId={project.id}
+              trigger={
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 border-t border-line px-4 py-3 text-left text-13 text-ink-faint transition-colors hover:bg-surface-subtle hover:text-ink-muted focus-visible:focus-ring"
+                >
+                  <Plus className="size-4" />
+                  Добавить задачу или веху…
+                </button>
+              }
+            />
+          ) : null}{" "}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-ink-faint">
         <span className="font-semibold tracking-wider uppercase">Легенда связей:</span>
@@ -298,6 +423,20 @@ export function GanttBoard({
         </span>
         <span className="flex items-center gap-1.5 text-accent">
           <span className="size-2.5 rotate-45 rounded-[1px] bg-accent" /> Контрольная точка проекта
+        </span>
+      </div>
+
+      <div className="flex w-full flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-ink-faint">
+        <span className="font-semibold tracking-wider uppercase">Легенда полос:</span>
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-[1px] bg-success" /> Готово
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-[1px] bg-warning" /> В плане или в работе
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-[1px] bg-danger" /> Критический путь, скоро дедлайн или
+          заблокирована
         </span>
       </div>
     </div>
@@ -356,14 +495,21 @@ function ShiftSummary({
   onClose: () => void;
 }) {
   const { task, result, deltaDays } = move;
-  const affected = result?.affectedTasks.length ?? 0;
+  // В affectedTasks сервер кладёт и саму перенесённую задачу — зависимые без неё.
+  const affected = result?.affectedTasks.filter((item) => item.taskId !== task.id).length ?? 0;
+  // bufferAvailableDays — запас задачи до переноса. Сдвиг вправо его расходует,
+  // поэтому показываем остаток; для сдвига влево честнее сказать, каким он был.
+  const reserve =
+    result && deltaDays > 0
+      ? `остаток резерва: ${Math.max(0, result.bufferAvailableDays - deltaDays)} дн.`
+      : `резерв до переноса: ${result?.bufferAvailableDays ?? 0} дн.`;
   const deadlineDelta = result?.projectDeadlineImpact.deltaDays ?? 0;
   const tone = deadlineDelta > 0 ? "danger" : "brand";
 
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-control px-3 py-2.5 text-[13px]",
+        "flex items-center gap-3 rounded-control px-3 py-2.5 text-[13px] shadow-popover",
         tone === "danger" ? "bg-danger-tint text-danger" : "bg-brand-tint text-brand",
       )}
     >
@@ -384,7 +530,7 @@ function ShiftSummary({
               : " Зависимые задачи не затронуты."}
             {deadlineDelta !== 0
               ? ` Дедлайн проекта сместился на ${deadlineDelta > 0 ? "+" : ""}${deadlineDelta} дн.`
-              : ` Дедлайн проекта не изменился (резерв: ${result.bufferAvailableDays} дн.).`}
+              : ` Дедлайн проекта не изменился (${reserve}).`}
           </>
         ) : null}
       </p>

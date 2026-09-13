@@ -40,15 +40,17 @@ export function CopyField({
   }
 
   return (
-    <div className={cn("relative rounded-control bg-surface-muted", className)}>
-      <pre className="overflow-x-auto py-2.5 pr-32 pl-3 font-mono text-xs leading-5 whitespace-pre text-ink select-all">
+    // Кнопка — отдельная колонка, а не поверх текста: на узком экране
+    // абсолютная кнопка закрывала середину команды.
+    <div className={cn("flex items-start gap-1 rounded-control bg-surface-muted", className)}>
+      <pre className="min-w-0 flex-1 overflow-x-auto py-2.5 pl-3 font-mono text-xs leading-5 whitespace-pre text-ink select-all">
         {value}
       </pre>
       <button
         type="button"
         onClick={copy}
         aria-label={copyLabel}
-        className="absolute top-1.5 right-1.5 inline-flex items-center gap-1 rounded-control bg-surface px-2 py-1 text-2xs font-medium text-ink-muted shadow-card transition-colors hover:text-ink focus-visible:focus-ring"
+        className="mt-1.5 mr-1.5 inline-flex shrink-0 items-center gap-1 rounded-control bg-surface px-2 py-1 text-2xs font-medium text-ink-muted shadow-card transition-colors hover:text-ink focus-visible:focus-ring"
       >
         {state === "copied" ? (
           <Check className="size-3.5 text-success" />

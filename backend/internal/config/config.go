@@ -56,7 +56,7 @@ func Load() Config {
 		JWTSecret:       jwtSecret,
 		AccessTokenTTL:  envDuration("ACCESS_TOKEN_TTL", 24*time.Hour),
 		RefreshTokenTTL: envDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
-		SeedDemoData:    envBool("SEED_DEMO_DATA", false),
+		SeedDemoData:    envBool("SEED_DEMO_DATA", true),
 	}
 }
 

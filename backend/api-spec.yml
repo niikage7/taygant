@@ -1394,6 +1394,15 @@ components:
         status:
           allOf: [{ $ref: "#/components/schemas/TaskStatus" }]
           description: Текущий статус задачи.
+        baseStatus:
+          type: string
+          enum: [planned, in_progress, done]
+          description: >-
+            Статус, выставленный человеком, без наложенных системой overdue и
+            blocked: у просроченной задачи здесь видно, начата она или ещё нет.
+            Нужен экранам, которые раскладывают задачи по этим трём состояниям
+            (канбан-доска). Поле добавлено бэкендом сверх первоначальной
+            спецификации.
         isMilestone:
           type: boolean
           default: false

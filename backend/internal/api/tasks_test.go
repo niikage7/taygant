@@ -282,6 +282,91 @@ func TestTaskStatusIsDerivedFromDatesAndDependencies(t *testing.T) {
 	}
 }
 
+// baseStatus нужен экранам, раскладывающим задачи по колонкам План / В работе /
+// Завершены: из одного status такую задачу не разложить — он у просроченной и
+// заблокированной затирается системным значением.
+func TestTaskBaseStatusKeepsUserChoice(t *testing.T) {
+	requireDB(t)
+	owner := newUser(t, "Доскодержатель")
+	project := newProject(t, owner)
+
+	late := newTask(t, owner.Token, project.ID, map[string]any{"startDate": day(-10), "endDate": day(-5)})
+	if late.Status != "overdue" || late.BaseStatus != "planned" {
+		t.Fatalf("просроченная задача: status=%q baseStatus=%q, ожидались overdue и planned", late.Status, late.BaseStatus)
+	}
+
+	got := decode[taskJSON](t, patch(t, owner.Token, "/tasks/"+late.ID, map[string]any{"status": "in_progress"}).want(t, http.StatusOK))
+	if got.Status != "overdue" || got.BaseStatus != "in_progress" {
+		t.Fatalf("после взятия в работу: status=%q baseStatus=%q, ожидались overdue и in_progress", got.Status, got.BaseStatus)
+	}
+
+	first := newTask(t, owner.Token, project.ID, nil)
+	second := newTask(t, owner.Token, project.ID, map[string]any{
+		"startDate":    day(11),
+		"endDate":      day(20),
+		"predecessors": []map[string]any{{"taskId": first.ID, "type": "FS"}},
+	})
+	if second.Status != "blocked" || second.BaseStatus != "planned" {
+		t.Fatalf("заблокированная задача: status=%q baseStatus=%q, ожидались blocked и planned", second.Status, second.BaseStatus)
+	}
+
+	// В списке — то же самое: доска читает именно его.
+	tasks := decode[[]taskJSON](t, get(t, owner.Token, "/projects/"+project.ID+"/tasks").want(t, http.StatusOK))
+	for _, task := range tasks {
+		if task.BaseStatus != "planned" && task.BaseStatus != "in_progress" && task.BaseStatus != "done" {
+			t.Fatalf("задача %s: baseStatus=%q, ожидался один из planned/in_progress/done", task.Code, task.BaseStatus)
+		}
+	}
+}
+
+// Прогресс и фактические даты следуют за статусом: иначе задача, закрытая
+// перетаскиванием на доске, не двигала прогресс проекта, а возвращённая из
+// «Завершено» так и висела бы с датой закрытия и «опережением графика».
+func TestTaskStatusSyncsProgressAndActualDates(t *testing.T) {
+	requireDB(t)
+	owner := newUser(t, "Закрывающий")
+	project := newProject(t, owner)
+
+	task := newTask(t, owner.Token, project.ID, map[string]any{"startDate": day(0), "endDate": day(5), "weightPercent": 100})
+	done := decode[taskJSON](t, patch(t, owner.Token, "/tasks/"+task.ID, map[string]any{"status": "done"}).want(t, http.StatusOK))
+	if done.ProgressPercent != 100 {
+		t.Fatalf("закрытая задача: progressPercent=%d, ожидалось 100", done.ProgressPercent)
+	}
+	if done.PlanVsActualDeviationDays != 5 {
+		t.Fatalf("закрытая раньше срока задача: отклонение=%d, ожидалось 5", done.PlanVsActualDeviationDays)
+	}
+	if p := decode[projectJSON](t, get(t, owner.Token, "/projects/"+project.ID).want(t, http.StatusOK)); p.ProgressPercent != 100 {
+		t.Fatalf("прогресс проекта=%v, ожидалось 100 — единственная задача закрыта", p.ProgressPercent)
+	}
+
+	reopened := decode[taskJSON](t, patch(t, owner.Token, "/tasks/"+task.ID, map[string]any{"status": "planned"}).want(t, http.StatusOK))
+	if reopened.ProgressPercent != 0 {
+		t.Fatalf("возвращённая в план задача: progressPercent=%d, ожидалось 0 — до закрытия работа не начиналась", reopened.ProgressPercent)
+	}
+
+	// Задачу вели наполовину, закрыли и передумали: процент возвращается, а не
+	// теряется. Иначе промах мышью на доске стоил бы заполненного прогресса.
+	patch(t, owner.Token, "/tasks/"+task.ID, map[string]any{"progressPercent": 60}).want(t, http.StatusOK)
+	patch(t, owner.Token, "/tasks/"+task.ID, map[string]any{"status": "done"}).want(t, http.StatusOK)
+	restored := decode[taskJSON](t, patch(t, owner.Token, "/tasks/"+task.ID, map[string]any{"status": "in_progress"}).want(t, http.StatusOK))
+	if restored.ProgressPercent != 60 {
+		t.Fatalf("переоткрытая задача: progressPercent=%d, ожидалось 60 — столько было до закрытия", restored.ProgressPercent)
+	}
+	if reopened.PlanVsActualDeviationDays != 0 {
+		t.Fatalf("возвращённая в план задача: отклонение=%d, ожидалось 0 — факта завершения больше нет", reopened.PlanVsActualDeviationDays)
+	}
+
+	// Явный процент в том же запросе важнее автоматического: человек назвал число сам.
+	withProgress := decode[taskJSON](t, patch(t, owner.Token, "/tasks/"+task.ID, map[string]any{"status": "done", "progressPercent": 80}).want(t, http.StatusOK))
+	if withProgress.ProgressPercent != 80 {
+		t.Fatalf("закрытие с явным процентом: progressPercent=%d, ожидалось 80", withProgress.ProgressPercent)
+	}
+	back := decode[taskJSON](t, patch(t, owner.Token, "/tasks/"+task.ID, map[string]any{"status": "in_progress"}).want(t, http.StatusOK))
+	if back.ProgressPercent != 80 {
+		t.Fatalf("переоткрытие: progressPercent=%d, ожидалось 80 — сбрасываются только автоматические 100%%", back.ProgressPercent)
+	}
+}
+
 func TestTaskListFilters(t *testing.T) {
 	requireDB(t)
 	owner := newUser(t, "Фильтровщик")

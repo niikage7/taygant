@@ -64,12 +64,19 @@ export function ShiftSimulator({
                 id="shift-days"
                 type="number"
                 value={shiftDays}
-                onChange={(event) => setShiftDays(Number(event.target.value))}
+                step={1}
+                // Сдвиг — целое число дней: дробь сервер не разберёт и ответит 400.
+                onChange={(event) => setShiftDays(Math.trunc(Number(event.target.value)) || 0)}
                 className="w-28"
               />
             </div>
             <Button
-              onClick={() => simulate.mutate({ shiftDays })}
+              onClick={() => {
+                // Новый расчёт заменяет итог прошлого применения: иначе карточка
+                // показывала бы старый результат, а «Применить» сработало бы второй раз.
+                applyShift.reset();
+                simulate.mutate({ shiftDays });
+              }}
               disabled={simulate.isPending || shiftDays === 0}
             >
               <Play />
@@ -81,7 +88,11 @@ export function ShiftSimulator({
 
       {simulate.isError ? (
         <Alert tone="danger">
-          {toUserMessage(simulate.error, {}, "Не удалось рассчитать сценарий")}
+          {toUserMessage(
+            simulate.error,
+            { 400: "Сдвиг — целое число дней" },
+            "Не удалось рассчитать сценарий",
+          )}
         </Alert>
       ) : null}
 
@@ -114,7 +125,9 @@ export function ShiftSimulator({
           }}
           onApply={(compensateFromBuffer) =>
             applyShift.mutate({
-              shiftDays,
+              // Применяем ровно показанный сценарий, а не число, которое успели
+              // поменять в поле после расчёта.
+              shiftDays: simulation.shiftDays,
               compensateFromBuffer,
               notifyAssignees: true,
             })

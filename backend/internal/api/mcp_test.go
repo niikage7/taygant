@@ -821,9 +821,17 @@ func TestMCPAsksHumanToConfirmWhenClientSupportsIt(t *testing.T) {
 	if !accepted.Changed || taskStatus(t, team.manager.Token, task.ID) != "done" {
 		t.Fatalf("после согласия человека: %+v", accepted)
 	}
+	// Закрытие задачи пишет в журнал ещё и прогресс (0 → 100), поэтому ищем
+	// запись о статусе, а не просто последнюю.
 	history := decode[[]historyJSON](t, get(t, team.manager.Token, "/tasks/"+task.ID+"/history").want(t, http.StatusOK))
-	if last := history[len(history)-1]; last.Action != "status_changed" || last.Source != "assistant" {
-		t.Fatalf("последняя запись журнала = %+v", last)
+	var statusEntry *historyJSON
+	for i := range history {
+		if history[i].Action == "status_changed" {
+			statusEntry = &history[i]
+		}
+	}
+	if statusEntry == nil || statusEntry.Source != "assistant" {
+		t.Fatalf("запись журнала о смене статуса = %+v (весь журнал: %+v)", statusEntry, history)
 	}
 
 	// Если менять нечего, человека не беспокоим.

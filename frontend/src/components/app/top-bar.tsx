@@ -4,6 +4,7 @@ import { Menu, Plus, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 
+import { ProfileMenu } from "@/components/app/profile-menu";
 import { CreateTaskDialog } from "@/components/gantt/create-task-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -246,6 +247,8 @@ export function TopBar({
           }
         />
       ) : null}
+
+      <ProfileMenu />
     </header>
   );
 }

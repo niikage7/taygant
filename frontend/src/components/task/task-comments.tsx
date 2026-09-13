@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { PageError } from "@/components/app/page-state";
 import { Alert } from "@/components/ui/alert";
+import { UserHoverCard } from "@/components/user/user-card";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
@@ -86,15 +87,21 @@ export function TaskComments({ taskId }: { taskId: string }) {
           <ul className="space-y-3 border-t border-line pt-4">
             {comments.data.map((comment) => (
               <li key={comment.id} className="flex gap-3">
-                <Avatar
-                  fullName={comment.author.fullName}
-                  className="size-8 rounded-full text-2xs"
-                />
+                <UserHoverCard user={comment.author}>
+                  <span className="h-fit">
+                    <Avatar
+                      fullName={comment.author.fullName}
+                      className="size-8 rounded-full text-2xs"
+                    />
+                  </span>
+                </UserHoverCard>
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-13 font-semibold text-ink">
-                      {comment.author.fullName}
-                    </span>
+                    <UserHoverCard user={comment.author}>
+                      <span className="text-13 font-semibold text-ink">
+                        {comment.author.fullName}
+                      </span>
+                    </UserHoverCard>
                     <span className="text-xs text-ink-faint">
                       {formatDistanceToNow(parseISO(comment.createdAt), {
                         addSuffix: true,

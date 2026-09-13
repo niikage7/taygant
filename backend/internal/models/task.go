@@ -75,6 +75,26 @@ type Task struct {
 	DurationWorkingDays  int  `gorm:"-"`
 	IsCriticalPath       bool `gorm:"-"`
 	BufferDays           int  `gorm:"-"`
+
+	// BaseStatus — статус, который выставил человек, до того как
+	// resolveStatuses заменил его вычисленным overdue/blocked. Заполняется там
+	// же; читать через StoredStatus, а не напрямую.
+	BaseStatus TaskStatus `gorm:"-"`
+}
+
+// StoredStatus — статус задачи в том виде, в каком его выставил пользователь
+// (planned/in_progress/done), без наложенных системой overdue/blocked.
+//
+// Нужен клиентам, которые раскладывают задачи по этим трём состояниям
+// (канбан-доска): по одному полю Status просроченную задачу не отличить от
+// просроченной-и-начатой, и доске пришлось бы гадать или помнить перенос у
+// себя. Пустой BaseStatus означает, что задача не проходила через
+// resolveStatuses, — тогда в Status и лежит хранимое значение.
+func (t Task) StoredStatus() TaskStatus {
+	if t.BaseStatus != "" {
+		return t.BaseStatus
+	}
+	return t.Status
 }
 
 // TableName фиксирует имя таблицы.

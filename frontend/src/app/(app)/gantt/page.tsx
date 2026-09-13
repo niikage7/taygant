@@ -1,5 +1,6 @@
 "use client";
 
+import { format } from "date-fns";
 import { CalendarDays, CircleCheck, Waypoints } from "lucide-react";
 
 import { EmptyProjectTasks, EmptyProjects, PageError, PageLoading } from "@/components/app/page-state";
@@ -7,7 +8,7 @@ import { GanttBoard } from "@/components/gantt/gantt-board";
 import { Badge } from "@/components/ui/badge";
 import { useCurrentProject } from "@/data/current-project";
 import { useGantt, useProject } from "@/data/queries";
-import { formatDate } from "@/lib/format";
+import { formatDate, pluralizeCount } from "@/lib/format";
 import { getStoredUser } from "@/lib/session";
 
 export default function GanttPage() {
@@ -44,7 +45,7 @@ export default function GanttPage() {
           <span className="flex items-center gap-1.5">
             <CalendarDays className="size-3.5" />
             {formatDate(project.data.startDate)} — {formatDate(project.data.deadline)} (
-            {project.data.durationCalendarDays} дней)
+            {pluralizeCount(project.data.durationCalendarDays, ["день", "дня", "дней"])})
           </span>
           <span className="flex items-center gap-1.5">
             <CircleCheck className="size-3.5" />
@@ -53,7 +54,7 @@ export default function GanttPage() {
           {criticalStages > 0 ? (
             <span className="flex items-center gap-1.5 text-danger">
               <Waypoints className="size-3.5" />
-              Критический путь: {criticalStages} этапа
+              Критический путь: {pluralizeCount(criticalStages, ["этап", "этапа", "этапов"])}
             </span>
           ) : null}
         </p>
@@ -68,7 +69,9 @@ export default function GanttPage() {
           dependencies={dependencies}
           milestones={milestones}
           currentUserId={currentUser?.id}
-          today={new Date().toISOString().slice(0, 10)}
+          // Местная дата: toISOString даёт UTC, и восточнее Гринвича после
+          // полуночи «сегодня» оставалось бы вчерашним днём.
+          today={format(new Date(), "yyyy-MM-dd")}
         />
       )}
     </div>

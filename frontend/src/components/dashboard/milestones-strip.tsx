@@ -46,7 +46,7 @@ export function MilestonesStrip({
             Предстоящих контрольных точек нет.
           </p>
         ) : (
-        <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {milestones.map((milestone) => {
             const style = STATUS_STYLE[milestone.status];
             const Icon = style.icon;

@@ -34,7 +34,8 @@ var demoUsers = []models.User{
 }
 
 // Seed наполняет пустую БД демонстрационными данными: командой, проектом,
-// спринтами, вехами и задачами с зависимостями.
+// спринтами, вехами и задачами с зависимостями, а также проектами витрины
+// возможностей (см. seed_showcase.go).
 //
 // Пользователи и демо-проект проверяются на идемпотентность раздельно (см.
 // demoProjectCode): один общий счётчик "есть хоть один пользователь" не подошёл
@@ -44,7 +45,10 @@ func Seed(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	return seedDemoProject(db, users)
+	if err := seedDemoProject(db, users); err != nil {
+		return err
+	}
+	return seedShowcase(db)
 }
 
 // seedUsers создаёт демо-команду, если таблица пользователей пуста, и в любом
@@ -196,30 +200,46 @@ func seedDemoProject(db *gorm.DB, users []models.User) error {
 
 		t1 := mk(sprint1, 0, "TASK-001", "1", "Анализ требований", orlova, models.TaskStatusDone, 100,
 			date(2026, 8, 18), date(2026, 8, 20), dp(date(2026, 8, 18)), dp(date(2026, 8, 20)), 10)
+		t1.MilestoneID = &milestones[0].ID
 		t2 := mk(sprint1, 1, "TASK-002", "2", "Дизайн архитектуры", orlova, models.TaskStatusDone, 100,
 			date(2026, 8, 21), date(2026, 8, 24), dp(date(2026, 8, 21)), dp(date(2026, 8, 24)), 10)
+		t2.MilestoneID = &milestones[0].ID
 		t3 := mk(sprint1, 2, "TASK-003", "3", "Прототип интерфейса", smirnova, models.TaskStatusDone, 100,
 			date(2026, 8, 21), date(2026, 8, 25), dp(date(2026, 8, 22)), dp(date(2026, 8, 25)), 10)
+		t3.MilestoneID = &milestones[0].ID
 		// Плановый конец раньше сегодняшней даты и задача не завершена — сервис
 		// на чтении сам покажет её как overdue (см. resolveStatuses), это не баг сида.
 		t4 := mk(sprint2, 3, "TASK-004", "4", "Разработка API сбора показаний", petrov, models.TaskStatusInProgress, 60,
 			date(2026, 9, 1), date(2026, 9, 10), dp(date(2026, 9, 1)), nil, 15)
+		t4.MilestoneID = &milestones[1].ID
 		t5 := mk(sprint2, 4, "TASK-005", "5", "Диаграмма Ганта на фронтенде", smirnova, models.TaskStatusInProgress, 40,
 			date(2026, 9, 3), date(2026, 9, 16), dp(date(2026, 9, 3)), nil, 15)
+		t5.MilestoneID = &milestones[1].ID
 		// Предшественник (TASK-004) ещё не done — сервис на чтении покажет
 		// эту задачу как blocked, хотя в таблице лежит planned.
 		t6 := mk(sprint2, 5, "TASK-006", "6", "Интеграция с БД показаний", petrov, models.TaskStatusPlanned, 0,
 			date(2026, 9, 11), date(2026, 9, 15), nil, nil, 10)
+		t6.MilestoneID = &milestones[1].ID
 		t7 := mk(sprint3, 6, "TASK-007", "7", "Тестирование", ivanova, models.TaskStatusPlanned, 0,
 			date(2026, 9, 17), date(2026, 9, 22), nil, nil, 10)
+		t7.MilestoneID = &milestones[2].ID
 		t8 := mk(sprint3, 7, "TASK-008", "8", "Исправление дефектов", petrov, models.TaskStatusPlanned, 0,
 			date(2026, 9, 23), date(2026, 9, 25), nil, nil, 5)
+		t8.MilestoneID = &milestones[2].ID
 		t9 := mk(sprint3, 8, "TASK-009", "9", "Внедрение и приёмка", volkov, models.TaskStatusPlanned, 0,
-			date(2026, 9, 26), date(2026, 9, 28), nil, nil, 10)
+			date(2026, 9, 28), date(2026, 9, 30), nil, nil, 10)
+		t9.MilestoneID = &milestones[2].ID
 		t10 := mk(sprint2, 9, "TASK-010", "10", "Документация пользователя", orlova, models.TaskStatusPlanned, 0,
 			date(2026, 9, 15), date(2026, 9, 20), nil, nil, 5)
+		// Задача-веха: событие нулевой длительности на графике, привязанное к
+		// КТ-2 «Готовность MVP» — не путать саму КТ (models.Milestone) с этой
+		// задачей (models.Task.IsMilestone), см. комментарий над seedDemoProject.
+		mvpReady := mk(sprint2, 10, "TASK-011", "11", "Готовность MVP", volkov, models.TaskStatusPlanned, 0,
+			date(2026, 9, 16), date(2026, 9, 16), nil, nil, 0)
+		mvpReady.IsMilestone = true
+		mvpReady.MilestoneID = &milestones[1].ID
 
-		tasks := []models.Task{t1, t2, t3, t4, t5, t6, t7, t8, t9, t10}
+		tasks := []models.Task{t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, mvpReady}
 		if err := tx.Create(&tasks).Error; err != nil {
 			return fmt.Errorf("создать задачи демо-проекта: %w", err)
 		}
@@ -228,15 +248,17 @@ func seedDemoProject(db *gorm.DB, users []models.User) error {
 		// плюс параллельная ветка прототипа UI и независимая документация.
 		type link struct{ from, to int }
 		links := []link{
-			{0, 1}, // Анализ -> Дизайн
-			{0, 2}, // Анализ -> Прототип UI
-			{1, 3}, // Дизайн -> API
-			{2, 4}, // Прототип UI -> Гант на фронте
-			{3, 5}, // API -> Интеграция с БД
-			{4, 6}, // Гант на фронте -> Тестирование
-			{5, 6}, // Интеграция с БД -> Тестирование
-			{6, 7}, // Тестирование -> Исправление дефектов
-			{7, 8}, // Исправление дефектов -> Внедрение
+			{0, 1},  // Анализ -> Дизайн
+			{0, 2},  // Анализ -> Прототип UI
+			{1, 3},  // Дизайн -> API
+			{2, 4},  // Прототип UI -> Гант на фронте
+			{3, 5},  // API -> Интеграция с БД
+			{4, 6},  // Гант на фронте -> Тестирование
+			{5, 6},  // Интеграция с БД -> Тестирование
+			{6, 7},  // Тестирование -> Исправление дефектов
+			{7, 8},  // Исправление дефектов -> Внедрение
+			{4, 10}, // Гант на фронте -> Готовность MVP (веха)
+			{5, 10}, // Интеграция с БД -> Готовность MVP (веха)
 		}
 		deps := make([]models.TaskDependency, 0, len(links))
 		for _, l := range links {

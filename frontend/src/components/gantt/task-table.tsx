@@ -4,14 +4,28 @@ import { ChevronDown, ChevronRight, Circle, CircleCheck, CircleDot, Flag } from 
 import Link from "next/link";
 
 import { ROW_HEIGHT } from "@/components/gantt/timeline";
-import { TASK_TABLE_WIDTH } from "@/lib/gantt";
+import { TASK_TABLE_COMPACT_WIDTH, TASK_TABLE_WIDTH } from "@/lib/gantt";
+import { UserHoverCard } from "@/components/user/user-card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { formatDayMonth } from "@/lib/format";
 import { TASK_STATUS_META } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
 import type { GanttRow } from "@/lib/gantt-rows";
-import type { Task, TaskDependency } from "@/types";
+import type { Task, TaskDependency, TaskStatus } from "@/types";
+
+/**
+ * Короткие подписи для статусов, чья полная надпись (`TASK_STATUS_META`) шире
+ * колонки «Статус» (`w-24`) и заезжала на соседнюю колонку. Полный текст
+ * остаётся доступен через `title` бейджа.
+ */
+const STATUS_BADGE_SHORT_LABEL: Partial<Record<TaskStatus, string>> = {
+  blocked: "Блок.",
+  overdue: "Просроч.",
+};
+
+/** Сколько моноширинных знаков влезает в колонку «Пред.» — «#5, #6». */
+const PREDECESSORS_MAX_CHARS = 6;
 
 /** Левая часть диаграммы — реестр задач, построчно совпадающий с таймлайном. */
 export function TaskTable({
@@ -21,6 +35,7 @@ export function TaskTable({
   collapsed,
   onToggleCollapse,
   highlightCriticalPath,
+  compact = false,
 }: {
   /** Готовые строки в порядке отрисовки — тот же массив получает таймлайн. */
   rows: GanttRow[];
@@ -31,6 +46,8 @@ export function TaskTable({
   collapsed: ReadonlySet<string>;
   onToggleCollapse: (milestoneId: string) => void;
   highlightCriticalPath: boolean;
+  /** Узкий экран: только номер и название, остальное видно в карточке задачи. */
+  compact?: boolean;
 }) {
   // Критический путь проходит через несколько задач, но в макете красным
   // выделена только та, что реально отстаёт: подсветка означает «требует
@@ -38,7 +55,13 @@ export function TaskTable({
   const isAtRisk = (task: Task) =>
     highlightCriticalPath && task.isCriticalPath && task.planVsActualDeviationDays < 0;
 
-  const predecessorOf = new Map(dependencies.map((d) => [d.successorTaskId, d.predecessorTaskId]));
+  // У задачи бывает несколько предшественников — показываем всех, иначе колонка
+  // молча теряла бы все связи, кроме последней.
+  const predecessorsOf = new Map<string, string[]>();
+  for (const dependency of dependencies) {
+    const list = predecessorsOf.get(dependency.successorTaskId) ?? [];
+    predecessorsOf.set(dependency.successorTaskId, [...list, dependency.predecessorTaskId]);
+  }
   const wbsOf = new Map(allTasks.map((task) => [task.id, task.wbsNumber]));
 
   return (
@@ -47,16 +70,22 @@ export function TaskTable({
     // сейчас видно. Непрозрачный фон обязателен — под ним проезжает таймлайн.
     <div
       className="sticky left-0 z-20 shrink-0 border-r border-line bg-surface"
-      style={{ width: TASK_TABLE_WIDTH }}
+      style={{ width: compact ? TASK_TABLE_COMPACT_WIDTH : TASK_TABLE_WIDTH }}
     >
       <div className="sticky top-0 z-10 flex h-12 items-end border-b border-line bg-surface px-3 pb-2 text-2xs tracking-wider text-ink-faint uppercase">
         <span className="w-8 shrink-0 font-semibold">#</span>
-        <span className="min-w-0 flex-1 truncate font-semibold">Наименование задачи</span>
-        <span className="w-30 shrink-0 truncate pl-2 font-semibold">Исполнитель</span>
-        <span className="w-20 shrink-0 font-semibold">Сроки</span>
-        <span className="w-10 shrink-0 text-right font-semibold">Дней</span>
-        <span className="w-24 shrink-0 pl-3 font-semibold">Статус</span>
-        <span className="w-12 shrink-0 text-right font-semibold">Пред.</span>
+        <span className="min-w-0 flex-1 truncate font-semibold">
+          {compact ? "Задача" : "Наименование задачи"}
+        </span>
+        {compact ? null : (
+          <>
+            <span className="w-30 shrink-0 truncate pl-2 font-semibold">Исполнитель</span>
+            <span className="w-20 shrink-0 font-semibold">Сроки</span>
+            <span className="w-10 shrink-0 text-right font-semibold">Дней</span>
+            <span className="w-24 shrink-0 pl-3 font-semibold">Статус</span>
+            <span className="w-12 shrink-0 text-right font-semibold">Пред.</span>
+          </>
+        )}
       </div>
 
       <ul>
@@ -103,14 +132,16 @@ export function TaskTable({
                   {milestone.name}
                 </span>
 
-                <Badge
-                  tone={complete ? "success" : childCount > 0 ? "accent" : "neutral"}
-                  size="sm"
-                >
-                  {milestone.tasksTotal > 0
-                    ? `${milestone.tasksDone} / ${milestone.tasksTotal}`
-                    : "нет задач"}
-                </Badge>
+                {compact ? null : (
+                  <Badge
+                    tone={complete ? "success" : childCount > 0 ? "accent" : "neutral"}
+                    size="sm"
+                  >
+                    {milestone.tasksTotal > 0
+                      ? `${milestone.tasksDone} / ${milestone.tasksTotal}`
+                      : "нет задач"}
+                  </Badge>
+                )}
 
                 <span className="shrink-0 font-mono text-2xs text-accent">
                   {formatDayMonth(milestone.plannedDate)}
@@ -131,7 +162,14 @@ export function TaskTable({
               : isMilestoneTask && (task.status === "planned" || task.status === "in_progress")
                 ? { label: "Веха", tone: "brand" as const }
                 : TASK_STATUS_META[task.status];
-          const predecessor = predecessorOf.get(task.id);
+          const predecessors = (predecessorsOf.get(task.id) ?? []).map(
+            (id) => `#${wbsOf.get(id) ?? "?"}`,
+          );
+          // Не влезает список — первый номер и «+N», полный список в подсказке.
+          const predecessorsLabel =
+            predecessors.join(", ").length <= PREDECESSORS_MAX_CHARS
+              ? predecessors.join(", ")
+              : `${predecessors[0]} +${predecessors.length - 1}`;
           const StatusIcon =
             task.status === "done"
               ? CircleCheck
@@ -203,14 +241,18 @@ export function TaskTable({
                 </span>
               </Link>
 
-              <span className="flex w-30 shrink-0 items-center gap-1.5">
+              {compact ? null : (
+              <>
+              <span className="flex w-30 shrink-0 items-center gap-1.5 pr-2">
                 {task.assignee ? (
-                  <>
-                    <Avatar fullName={task.assignee.fullName} className="size-5 text-2xs" />
-                    <span className="truncate text-13 text-ink-muted">
-                      {task.assignee.fullName}
+                  <UserHoverCard user={task.assignee}>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Avatar fullName={task.assignee.fullName} className="size-5 text-2xs" />
+                      <span className="truncate text-13 text-ink-muted">
+                        {task.assignee.fullName}
+                      </span>
                     </span>
-                  </>
+                  </UserHoverCard>
                 ) : null}
               </span>
 
@@ -240,15 +282,28 @@ export function TaskTable({
                     Крит. путь
                   </Badge>
                 ) : (
-                  <Badge tone={status.tone} size="sm" dot={status.tone !== "brand"}>
-                    {status.label}
+                  // «Заблокирована» и «Просрочена» шире колонки w-24 и заезжали
+                  // на соседнюю — в бейдже короткая подпись, полная остаётся в
+                  // нативном title.
+                  <Badge
+                    tone={status.tone}
+                    size="sm"
+                    dot={status.tone !== "brand"}
+                    title={status.label}
+                  >
+                    {STATUS_BADGE_SHORT_LABEL[task.status] ?? status.label}
                   </Badge>
                 )}
               </span>
 
-              <span className="w-12 shrink-0 text-right font-mono text-xs text-brand">
-                {predecessor ? `#${wbsOf.get(predecessor) ?? "?"}` : "—"}
+              <span
+                className="w-12 shrink-0 truncate text-right font-mono text-xs text-brand"
+                title={predecessors.length > 1 ? predecessors.join(", ") : undefined}
+              >
+                {predecessors.length > 0 ? predecessorsLabel : "—"}
               </span>
+              </>
+              )}
             </li>
           );
         })}

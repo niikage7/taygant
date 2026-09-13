@@ -1,6 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
+import { format } from "date-fns";
 import { CircleCheck, Flag, Link2, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -23,7 +24,9 @@ import { formatDate } from "@/lib/format";
 import { MILESTONE_STATUS_META } from "@/lib/task-status";
 import type { Milestone, Task } from "@/types";
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+// Местная дата: toISOString даёт UTC, и восточнее Гринвича после полуночи
+// «сегодня» оставалось бы вчерашним днём.
+const todayIso = () => format(new Date(), "yyyy-MM-dd");
 
 /**
  * Управление контрольными точками проекта.

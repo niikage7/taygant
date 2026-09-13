@@ -3,6 +3,7 @@
 import { Search, UserPlus, X } from "lucide-react";
 import { useState } from "react";
 
+import { UserHoverCard } from "@/components/user/user-card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -94,24 +95,26 @@ export function TeamStep({
       ) : null}
 
       {members.length > 0 ? (
-        <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {members.map((member) => {
             const user = byId.get(member.userId);
             if (!user) return null;
             return (
               <li key={member.userId} className="rounded-control bg-surface-subtle p-3">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    <Avatar fullName={user.fullName} className="size-9 rounded-full text-xs" />
-                    <span className="min-w-0">
-                      <span className="block truncate text-13 font-semibold text-ink">
-                        {user.fullName}
-                      </span>
-                      <span className="block truncate text-xs text-ink-faint">
-                        {user.position || user.email}
+                  <UserHoverCard user={user}>
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <Avatar fullName={user.fullName} className="size-9 rounded-full text-xs" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-13 font-semibold text-ink">
+                          {user.fullName}
+                        </span>
+                        <span className="block truncate text-xs text-ink-faint">
+                          {user.position || user.email}
+                        </span>
                       </span>
                     </span>
-                  </span>
+                  </UserHoverCard>
                   <button
                     type="button"
                     onClick={() =>
@@ -123,7 +126,7 @@ export function TeamStep({
                     <X className="size-4" />
                   </button>
                 </div>
-                <div className="mt-3 grid gap-2.5 border-t border-line pt-2.5 sm:grid-cols-2">
+                <div className="mt-3 grid grid-cols-1 gap-2.5 border-t border-line pt-2.5 sm:grid-cols-2">
                   <div>
                     <label
                       htmlFor={`role-${member.userId}`}

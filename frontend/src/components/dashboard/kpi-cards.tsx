@@ -30,7 +30,7 @@ export function KpiCards({ data, project }: { data: ProjectDashboard; project: P
   ].filter((segment) => segment.value > 0);
 
   return (
-    <div className="grid gap-3 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
       <Card className="flex flex-col">
         <CardBody className="flex flex-1 items-start justify-between gap-4">
           <div>

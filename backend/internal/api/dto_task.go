@@ -7,6 +7,12 @@ import (
 )
 
 // taskDTO — схема Task.
+//
+// baseStatus — единственное поле сверх спецификации: там у задачи один status,
+// в который система подмешивает overdue/blocked, и по нему нельзя понять, что
+// выставил человек. Канбан-доске это нужно, чтобы разложить просроченные и
+// заблокированные задачи по колонкам План/В работе/Завершены. Поле добавочное,
+// существующих клиентов не ломает; в api-spec.yml оно описано как расширение.
 type taskDTO struct {
 	ID                        uuid.UUID         `json:"id"`
 	ProjectID                 uuid.UUID         `json:"projectId"`
@@ -18,6 +24,7 @@ type taskDTO struct {
 	Title                     string            `json:"title"`
 	Assignee                  *userDTO          `json:"assignee"`
 	Status                    models.TaskStatus `json:"status"`
+	BaseStatus                models.TaskStatus `json:"baseStatus"`
 	IsMilestone               bool              `json:"isMilestone"`
 	StartDate                 models.Date       `json:"startDate"`
 	EndDate                   models.Date       `json:"endDate"`
@@ -42,6 +49,7 @@ func newTaskDTO(t models.Task) taskDTO {
 		Title:                     t.Title,
 		Assignee:                  newUserDTOPtr(t.Assignee),
 		Status:                    t.Status,
+		BaseStatus:                t.StoredStatus(),
 		IsMilestone:               t.IsMilestone,
 		StartDate:                 t.StartDate,
 		EndDate:                   t.EndDate,

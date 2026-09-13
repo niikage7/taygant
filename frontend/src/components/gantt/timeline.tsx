@@ -25,6 +25,17 @@ const DEADLINE_RISK_DAYS = 3;
 const MONTH_FULL_LABEL_MIN_WIDTH = 104;
 /** Минимальная ширина колонки для короткой подписи месяца («авг 26»). */
 const MONTH_SHORT_LABEL_MIN_WIDTH = 64;
+/** Насколько нужно протащить полосу, чтобы это считалось переносом, а не кликом. */
+const DRAG_THRESHOLD_PX = 5;
+/**
+ * Если от конца предшественника до начала цели меньше этого, места для излома
+ * между отрезками нет и стрелка обходит полосу (см. DependencyArrows).
+ */
+const ARROW_DETOUR_MIN_PX = 22;
+/** Отступ стрелки вправо от конца предшественника при обходе. */
+const ARROW_EXIT_PX = 8;
+/** Подход стрелки к цели слева. */
+const ARROW_APPROACH_PX = 12;
 
 /**
  * Правая часть диаграммы: шапка календаря, отрезки задач и SVG-стрелки связей.
@@ -79,6 +90,9 @@ export function Timeline({
   const rowIndex = new Map(taskRows.map(({ task, index }) => [task.id, index]));
   const todayLeft = offsetPx(range, today) + range.pxPerDay / 2;
   const bodyHeight = rows.length * ROW_HEIGHT;
+  // Какая полоса сейчас тащится и на сколько дней. Состояние живёт здесь, а не
+  // в полосе: за ней должны ехать и стрелки её связей.
+  const [drag, setDrag] = useState<{ taskId: string; deltaDays: number } | null>(null);
 
   // При открытии показываем окрестность сегодняшнего дня, а не начало графика:
   // проект длится месяцы, и без этого пользователь каждый раз мотал бы вручную.
@@ -103,16 +117,26 @@ export function Timeline({
       >
         <div className="relative h-6 border-b border-line">
           {months.map((month) => (
+            // Внешний span стоит на своём месте в таймлайне (левый край месяца),
+            // внутренний — sticky и «прилипает» к границе примороженного реестра
+            // при прокрутке, но не может выйти за пределы своего же месяца
+            // (родитель — его граница): иначе на масштабе «Дни», где месяц шире
+            // экрана, подпись уезжала бы из видимой области и шапка пустела.
             <span
               key={month.key}
-              className="absolute top-0 flex h-6 items-center overflow-hidden px-2 text-2xs font-bold tracking-wide whitespace-nowrap text-brand uppercase"
+              className="absolute top-0 h-6 overflow-hidden"
               style={{ left: month.left, width: month.width }}
             >
-              {month.width >= MONTH_FULL_LABEL_MIN_WIDTH
-                ? month.label
-                : month.width >= MONTH_SHORT_LABEL_MIN_WIDTH
-                  ? month.shortLabel
-                  : ""}
+              <span
+                className="sticky flex h-6 items-center px-2 text-2xs font-bold tracking-wide whitespace-nowrap text-brand uppercase"
+                style={{ left: frozenWidth }}
+              >
+                {month.width >= MONTH_FULL_LABEL_MIN_WIDTH
+                  ? month.label
+                  : month.width >= MONTH_SHORT_LABEL_MIN_WIDTH
+                    ? month.shortLabel
+                    : ""}
+              </span>
             </span>
           ))}
         </div>
@@ -167,6 +191,7 @@ export function Timeline({
           range={range}
           bodyHeight={bodyHeight}
           highlightCriticalPath={highlightCriticalPath}
+          drag={drag}
         />
 
         {taskRows.map(({ task, index }) => (
@@ -180,6 +205,10 @@ export function Timeline({
             today={today}
             highlightCriticalPath={highlightCriticalPath}
             movable={canMoveTask(task)}
+            dragDays={drag?.taskId === task.id ? drag.deltaDays : null}
+            onDrag={(deltaDays) =>
+              setDrag(deltaDays === null ? null : { taskId: task.id, deltaDays })
+            }
             onMove={(deltaDays) => onTaskMove(task, deltaDays)}
           />
         ))}
@@ -232,6 +261,8 @@ function TaskBar({
   today,
   highlightCriticalPath,
   movable,
+  dragDays,
+  onDrag,
   onMove,
 }: {
   task: Task;
@@ -242,32 +273,46 @@ function TaskBar({
   today: string;
   highlightCriticalPath: boolean;
   movable: boolean;
+  /** Текущий сдвиг перетаскивания в днях; null — полосу сейчас не тащат. */
+  dragDays: number | null;
+  /** Ход перетаскивания уходит в Timeline, чтобы за полосой ехали и стрелки. */
+  onDrag: (deltaDays: number | null) => void;
   onMove: (deltaDays: number) => void;
 }) {
-  const [dragDelta, setDragDelta] = useState<number | null>(null);
   const startXRef = useRef(0);
+  // Пока указатель не ушёл от точки нажатия дальше порога, нажатие остаётся
+  // кликом: в мелком масштабе день — это пара пикселей, и дрожь руки
+  // переносила бы задачу вместе с каскадом.
+  const draggingRef = useRef(false);
 
   // Перетаскивание сдвигает весь отрезок на целое число дней. Превью
-  // (dragDelta) живёт до pointerup, а запрос уходит один раз — иначе PATCH
+  // (dragDays) живёт до pointerup, а запрос уходит один раз — иначе PATCH
   // отправлялся бы на каждое движение мыши.
   const onPointerDown = (event: React.PointerEvent<HTMLSpanElement>) => {
     if (!movable) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     startXRef.current = event.clientX;
-    setDragDelta(0);
+    draggingRef.current = false;
+    onDrag(0);
   };
   const onPointerMove = (event: React.PointerEvent<HTMLSpanElement>) => {
-    if (dragDelta === null) return;
-    setDragDelta(Math.round((event.clientX - startXRef.current) / pxPerDay));
+    if (dragDays === null) return;
+    const dx = event.clientX - startXRef.current;
+    if (!draggingRef.current) {
+      if (Math.abs(dx) <= DRAG_THRESHOLD_PX) return;
+      draggingRef.current = true;
+    }
+    const next = Math.round(dx / pxPerDay);
+    if (next !== dragDays) onDrag(next);
   };
   const onPointerUp = () => {
-    if (dragDelta === null) return;
-    const delta = dragDelta;
-    setDragDelta(null);
+    if (dragDays === null) return;
+    const delta = dragDays;
+    onDrag(null);
     if (delta !== 0) onMove(delta);
   };
 
-  const offset = (dragDelta ?? 0) * pxPerDay;
+  const offset = (dragDays ?? 0) * pxPerDay;
   const dragHandlers = movable
     ? {
         onPointerDown,
@@ -282,6 +327,9 @@ function TaskBar({
   // Мало времени до дедлайна (или уже просрочена) и задача не закрыта — тоже риск.
   const daysLeft = differenceInCalendarDays(parseISO(task.endDate), parseISO(today));
   const nearDeadline = task.status !== "done" && daysLeft <= DEADLINE_RISK_DAYS;
+  // Заблокированная задача — блокирующая проблема, а не просто «в плане», поэтому
+  // красный, а не тот же оранжевый, что у планов и текущей работы.
+  const blocked = task.status === "blocked";
 
   if (task.isMilestone) {
     return (
@@ -315,7 +363,7 @@ function TaskBar({
       {...dragHandlers}
       className={cn(
         "absolute flex items-center overflow-hidden rounded-control",
-        critical || nearDeadline
+        critical || nearDeadline || blocked
           ? "bg-danger"
           : task.status === "done"
             ? "bg-success"
@@ -349,6 +397,7 @@ function DependencyArrows({
   range,
   bodyHeight,
   highlightCriticalPath,
+  drag,
 }: {
   tasks: Task[];
   dependencies: TaskDependency[];
@@ -356,8 +405,12 @@ function DependencyArrows({
   range: ReturnType<typeof buildRange>;
   bodyHeight: number;
   highlightCriticalPath: boolean;
+  /** Перетаскиваемая полоса: концы её стрелок едут вместе с ней. */
+  drag: { taskId: string; deltaDays: number } | null;
 }) {
   const byId = new Map(tasks.map((task) => [task.id, task]));
+  const dragShiftPx = (taskId: string) =>
+    drag?.taskId === taskId ? drag.deltaDays * range.pxPerDay : 0;
 
   return (
     <svg
@@ -373,15 +426,23 @@ function DependencyArrows({
         const toRow = rowIndex.get(dependency.successorTaskId);
         if (!from || !to || fromRow === undefined || toRow === undefined) return null;
 
-        const x1 = offsetPx(range, from.startDate) + spanPx(range, from.startDate, from.endDate);
+        const x1 =
+          offsetPx(range, from.startDate) +
+          spanPx(range, from.startDate, from.endDate) +
+          dragShiftPx(from.id);
         const y1 = fromRow * ROW_HEIGHT + ROW_HEIGHT / 2;
-        const x2 = offsetPx(range, to.startDate);
+        const x2 = offsetPx(range, to.startDate) + dragShiftPx(to.id);
         const y2 = toRow * ROW_HEIGHT + ROW_HEIGHT / 2;
 
-        // Обходим отрезок-последователь слева, если он начинается раньше конца
-        // предшественника — иначе стрелка прошла бы сквозь него.
-        const elbow = Math.max(x1 + 10, x2 - 12);
-        const path = `M ${x1} ${y1} H ${elbow} V ${y2} H ${x2}`;
+        // Если последователь начинается сразу после конца предшественника (или
+        // раньше), места для излома нет. Тогда обходим: вправо от предшественника,
+        // вниз до границы над строкой цели, влево левее её начала, к центру строки
+        // и оттуда — в полосу слева. Иначе линия ныряет под отрезок, а наконечник
+        // висит отдельно.
+        const path =
+          x2 - x1 < ARROW_DETOUR_MIN_PX
+            ? `M ${x1} ${y1} H ${x1 + ARROW_EXIT_PX} V ${y2 - ROW_HEIGHT / 2} H ${x2 - ARROW_APPROACH_PX} V ${y2} H ${x2}`
+            : `M ${x1} ${y1} H ${Math.max(x1 + 10, x2 - ARROW_APPROACH_PX)} V ${y2} H ${x2}`;
         const critical = highlightCriticalPath && dependency.isCritical;
 
         return (

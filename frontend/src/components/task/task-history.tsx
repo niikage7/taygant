@@ -5,6 +5,7 @@ import { ru } from "date-fns/locale";
 import { Bot } from "lucide-react";
 
 import { PageError } from "@/components/app/page-state";
+import { UserHoverCard } from "@/components/user/user-card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody } from "@/components/ui/card";
@@ -92,7 +93,10 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
       <div className="min-w-0 flex-1 pb-1">
         <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-13 text-ink">
           <span>
-            <span className="font-semibold">{entry.actor.fullName}</span> {action}
+            <UserHoverCard user={entry.actor}>
+              <span className="font-semibold">{entry.actor.fullName}</span>
+            </UserHoverCard>{" "}
+            {action}
             {fieldLabel ? <span className="text-ink-muted"> · {fieldLabel}</span> : null}
           </span>
           {entry.source === "assistant" ? <AssistantBadge via={entry.via} /> : null}

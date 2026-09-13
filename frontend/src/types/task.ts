@@ -1,4 +1,4 @@
-import type { DependencyType, TaskStatus } from "./common";
+import type { AssignableTaskStatus, DependencyType, TaskStatus } from "./common";
 import type { ChecklistItem } from "./checklist";
 import type { TaskDependency } from "./dependency";
 import type { User } from "./user";
@@ -29,6 +29,12 @@ export interface Task {
   assignee: User | null;
   /** Текущий статус задачи. */
   status: TaskStatus;
+  /**
+   * Статус, выставленный человеком, без наложенных системой `overdue`/`blocked`:
+   * у просроченной задачи здесь видно, начата она или ещё нет. По нему канбан-доска
+   * раскладывает задачи по колонкам — `status` для этого не годится.
+   */
+  baseStatus: AssignableTaskStatus;
   /** Признак того, что задача является вехой (точкой с нулевой длительностью) на диаграмме Ганта. */
   isMilestone: boolean;
   /** Плановая дата начала задачи. */
