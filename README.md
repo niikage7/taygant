@@ -1,3 +1,15 @@
+Данный проект был реализован командой "Котелки" в рамках 24-х часового хакатона "re:actionstack" группы компаний [Актион](https://action360.ru/). В беспрецендентной борьбе нам удалось занять ПЕРВОЕ МЕСТО!!!
+
+❤️‍🔥 Огромная благодарность всем участникам команды за их неоценимый вклад в общую победу:
+- [Артем](https://github.com/feni0707) - DevOps engineer + Analyst
+- [Андрей](https://github.com/Juwek) - Backend developer + Database engineer
+- [Кирилл](https://github.com/lovelessunloveable) - Frontend developer + Designer
+- [Владислав](https://github.com/Psychoz42) - Backend developer
+- [Никита](https://github.com/niikage7) - Backend developer + TeamLead (kinda)
+- [Джон Клод](https://claude.ai/) - Fullstack developer
+
+---
+
 <div align="center" markdown="1">
     <img src="docs/images/logo.svg" width="80" alt="taygant">
     <h1>taygant</h1>
